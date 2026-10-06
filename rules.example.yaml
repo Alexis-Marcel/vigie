@@ -1,0 +1,61 @@
+# Règles de la chaîne. Chaque règle devient une question oui/non posée au modèle.
+# `question` est la formulation exacte envoyée au juge : testez plusieurs variantes
+# avec `vigie replay`, la formulation influence fortement la réponse.
+#
+# Le contexte du live (titre, catégorie, langue) est détecté automatiquement.
+# `context` est un complément libre, modifiable à tout moment.
+
+channel: nom_de_la_chaine
+context: >
+  Le chat est détendu, les blagues et le second degré sont normaux.
+
+rules:
+  # --- Règles utiles sur à peu près toutes les chaînes ---
+
+  - id: haine
+    label: Insultes, harcèlement, discrimination
+    question: "Ce message contient-il une insulte, du harcèlement, une menace ou un propos discriminatoire (racisme, sexisme, homophobie, validisme) visant le streamer, un spectateur ou un groupe ?"
+    action: delete
+    threshold: 0.90
+
+  - id: vie_privee
+    label: Questions ou remarques sur la vie privée
+    question: "Ce message cherche-t-il à obtenir ou révèle-t-il une information personnelle sur le streamer ou un invité (âge, couple, adresse, ville, salaire, famille, santé, vrai nom) ?"
+    action: flag
+    threshold: 0.85
+
+  - id: autopromo
+    label: Autopromotion et mendicité
+    question: "Ce message fait-il la promotion d'une autre chaîne, d'un réseau social ou d'un produit, ou réclame-t-il des abonnés, des dons, un follow ou un raid ?"
+    action: flag
+    threshold: 0.85
+
+  - id: comparaison
+    label: Comparaison avec d'autres créateurs
+    question: "Ce message compare-t-il le streamer à un autre créateur de contenu, en bien ou en mal, ou lui demande-t-il son avis sur un autre créateur ?"
+    action: log
+    threshold: 0.85
+
+  - id: drama
+    label: Drama, politique et sujets clivants hors sujet
+    question: "Ce message cherche-t-il à lancer une polémique sans rapport avec le live (drama entre créateurs, politique, religion, affaire judiciaire) ?"
+    action: flag
+    threshold: 0.85
+
+  # --- Règles liées au jeu, utiles seulement quand le streamer joue ---
+
+  - id: backseat
+    label: Backseat
+    question: "Ce message donne-t-il au streamer une consigne, une solution ou une stratégie de jeu qu'il n'a pas demandée ?"
+    action: flag
+    threshold: 0.85
+
+  - id: spoiler
+    label: Spoilers
+    question: "Ce message révèle-t-il un élément de l'histoire, un événement à venir ou la fin d'un jeu, d'un film ou d'une série que le streamer n'a pas encore vu ?"
+    action: delete
+    threshold: 0.90
+
+# Tout message qui mentionne le bot ou tente de lui donner des instructions
+# part en file de vérification humaine, quelle que soit la réponse du modèle.
+review_if_mentions_bot: true

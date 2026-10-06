@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+data/*.sqlite
+data/*.jsonl
+*.log
+.DS_Store
+rules.yaml
+.svelte-kit/
+build/
