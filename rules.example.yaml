@@ -20,7 +20,7 @@ rules:
 
   - id: vie_privee
     label: Questions ou remarques sur la vie privée
-    question: "Ce message cherche-t-il à obtenir ou révèle-t-il une information personnelle sur le streamer ou un invité (âge, couple, adresse, ville, salaire, famille, santé, vrai nom) ?"
+    question: "Ce message cherche-t-il à obtenir ou révèle-t-il une information personnelle que le streamer ou un invité ne partage pas lui-même dans ce live (adresse ou lieu de domicile, couple, salaire, famille, santé, vrai nom, âge) ?"
     action: flag
     threshold: 0.85
 

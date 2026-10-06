@@ -15,7 +15,11 @@ export function buildContext(info: StreamInfo | null, userContext: string | unde
   if (info) {
     const title = info.title.replace(/![a-z0-9_]+/gi, "").replace(/\s*[-|•·]+\s*$/g, "").replace(/\s+/g, " ").trim(); // retire les !commandes et les séparateurs orphelins
     if (info.game) {
-      if (NON_GAME.has(info.game)) {
+      if (info.game === "IRL" || info.game === "Travel & Outdoors") {
+        parts.push(
+          "Live en extérieur (IRL) : le streamer se filme dans la vraie vie, en déplacement ou sur place. Le lieu où il se trouve, ce qu'il fait et ce qu'il montre font partie du contenu du live, les spectateurs en parlent et posent des questions dessus normalement.",
+        );
+      } else if (NON_GAME.has(info.game)) {
         parts.push(`Type de live : ${info.game}, pas de jeu vidéo en cours. Le streamer discute avec son chat.`);
       } else {
         parts.push(`Le streamer joue à « ${info.game} ». Les termes du jeu, les rôles, les noms des autres joueurs et les mécaniques font partie du contexte normal du chat.`);
