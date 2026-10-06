@@ -1,4 +1,12 @@
 import { EventEmitter } from "node:events";
+import { readTwitchChat } from "#lib/core/sources/twitch.ts";
+import { fetchStreamInfo, type StreamInfo } from "#lib/core/sources/twitch-info.ts";
+import { Store } from "#lib/core/store.ts";
+import { loadRules, saveRules, parseRuleSet } from "#lib/core/rules.ts";
+import { Pipeline, type PipelineStats } from "#lib/core/pipeline.ts";
+import type { RuleSet } from "#lib/core/types.ts";
+import type { UiEvent, UiMessage, UiState } from "#lib/ui/types.ts";
+import { toUiMessage } from "#lib/ui/types.ts";
 
 // Vite ne charge pas .env dans process.env : on le fait ici, une fois, pour la clé Jev.
 try {
@@ -6,17 +14,21 @@ try {
 } catch {
   /* pas de .env : la clé peut venir de l'environnement */
 }
-import { readTwitchChat } from "#lib/core/sources/twitch.ts";
-import { fetchStreamInfo, type StreamInfo } from "#lib/core/sources/twitch-info.ts";
-import { Store } from "#lib/core/store.ts";
-import { loadRules, saveRules, parseRuleSet } from "#lib/core/rules.ts";
-import { Pipeline } from "#lib/core/pipeline.ts";
-import type { RuleSet } from "#lib/core/types.ts";
-import type { UiEvent, UiMessage, UiState } from "#lib/ui/types.ts";
-import { toUiMessage } from "#lib/ui/types.ts";
 
 const RECENT = 300;
-const QUEUE = 200;
+const QUEUE = 500;
+
+/** Ce qu'une observation en cours transporte d'une version du code à la suivante (rechargement à chaud en dev). */
+interface Snapshot {
+  channel: string;
+  session: string;
+  startedAt: number;
+  stream: StreamInfo | null;
+  stats: PipelineStats;
+  recent: UiMessage[];
+  queue: UiMessage[];
+  ruleHits: Record<string, number>;
+}
 
 /**
  * Une seule session d'observation à la fois dans ce processus : le chat d'une
@@ -49,7 +61,7 @@ class Watcher extends EventEmitter {
       startedAt: this.startedAt,
       stream: this.stream,
       context: this.pipeline?.currentContext() ?? "",
-      stats: this.pipeline?.stats ?? { total: 0, prefiltered: 0, judged: 0, pass: 0, review: 0, delete: 0, errors: 0, cost: 0, latency: 0 },
+      stats: this.pipeline?.stats ?? emptyStats(),
       rules: this.rules.rules,
       ruleSet: this.rules,
       ruleHits: this.ruleHits,
@@ -62,15 +74,18 @@ class Watcher extends EventEmitter {
     this.emit("event", ev);
   }
 
-  async start(channel: string) {
-    if (this.running) this.halt();
+  async start(channel: string, resume?: Snapshot) {
+    if (this.running) this.halt(true);
     this.channel = channel.toLowerCase().replace(/^#/, "");
-    this.session = new Date().toISOString();
-    this.startedAt = Date.now();
-    this.recent = [];
-    this.queue = [];
-    this.ruleHits = Object.fromEntries(this.rules.rules.map((r) => [r.id, 0]));
+    this.session = resume?.session ?? new Date().toISOString();
+    this.startedAt = resume?.startedAt ?? Date.now();
+    this.recent = resume?.recent ?? [];
+    this.queue = resume?.queue ?? [];
+    this.stream = resume?.stream ?? null;
+    this.ruleHits = resume?.ruleHits ?? Object.fromEntries(this.rules.rules.map((r) => [r.id, 0]));
     this.pipeline = new Pipeline(this.rules, this.store);
+    if (resume) Object.assign(this.pipeline.stats, resume.stats);
+    if (this.stream) this.pipeline.setStreamInfo(this.stream);
 
     await this.refreshStream();
     this.timers.push(setInterval(() => this.refreshStream(), 5 * 60_000));
@@ -93,7 +108,7 @@ class Watcher extends EventEmitter {
           ui.decision = ev.decision;
           if (ev.decision && ev.decision.kind !== "pass") {
             this.ruleHits[ev.decision.ruleId] = (this.ruleHits[ev.decision.ruleId] ?? 0) + 1;
-            this.push(this.queue, ui, QUEUE);
+            this.pushQueue(ui);
           }
           this.emitEvent({ type: "message", message: ui });
           this.emitEvent({ type: "stats", stats: this.pipeline!.stats, ruleHits: this.ruleHits });
@@ -103,12 +118,31 @@ class Watcher extends EventEmitter {
     this.emitEvent({ type: "state", state: this.state() });
   }
 
-  halt() {
+  halt(silent = false) {
     this.stop?.();
     this.stop = null;
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
-    this.emitEvent({ type: "state", state: this.state() });
+    if (!silent) this.emitEvent({ type: "state", state: this.state() });
+  }
+
+  /** Relance la lecture sur la même chaîne en gardant chat, file et bilan. Utilisé quand le code change. */
+  async reload() {
+    if (!this.running || !this.channel) return;
+    await this.start(this.channel, this.snapshot());
+  }
+
+  snapshot(): Snapshot {
+    return {
+      channel: this.channel!,
+      session: this.session,
+      startedAt: this.startedAt ?? Date.now(),
+      stream: this.stream,
+      stats: { ...(this.pipeline?.stats ?? emptyStats()) },
+      recent: this.recent,
+      queue: this.queue,
+      ruleHits: this.ruleHits,
+    };
   }
 
   getRules(): RuleSet {
@@ -154,8 +188,53 @@ class Watcher extends EventEmitter {
     arr.push(item);
     if (arr.length > max) arr.splice(0, arr.length - max);
   }
+
+  /** La file garde au plus QUEUE entrées : on évince d'abord les plus anciennes déjà traitées. */
+  private pushQueue(item: UiMessage) {
+    this.queue.push(item);
+    while (this.queue.length > QUEUE) {
+      const i = this.queue.findIndex((m) => m.annotation);
+      this.queue.splice(i >= 0 ? i : 0, 1);
+    }
+  }
 }
 
-// Survit au rechargement à chaud de Vite en dev
-const g = globalThis as unknown as { __vigieWatcher?: Watcher };
-export const watcher = (g.__vigieWatcher ??= new Watcher());
+function emptyStats(): PipelineStats {
+  return { total: 0, prefiltered: 0, judged: 0, pass: 0, review: 0, delete: 0, errors: 0, cost: 0, latency: 0 };
+}
+
+/*
+ * Rechargement à chaud (dev) : quand ce module ou un de ses imports change, Vite le
+ * ré-évalue. L'ancienne instance arrête sa lecture et confie son état à la nouvelle,
+ * qui reprend la même chaîne avec le nouveau code. En production, ce bloc est inerte.
+ */
+type Global = { __vigieWatcher?: Watcher; __vigieResume?: Snapshot; __vigieListeners?: Array<(ev: UiEvent) => void> };
+const g = globalThis as unknown as Global;
+
+const previous = g.__vigieWatcher;
+export const watcher = new Watcher();
+g.__vigieWatcher = watcher;
+
+// Les pages connectées en SSE écoutaient l'ancienne instance : on les rebranche.
+g.__vigieListeners ??= [];
+for (const l of g.__vigieListeners) watcher.on("event", l);
+const originalOn = watcher.on.bind(watcher);
+const originalOff = watcher.off.bind(watcher);
+watcher.on = ((name: string, l: (ev: UiEvent) => void) => {
+  if (name === "event") g.__vigieListeners!.push(l);
+  return originalOn(name, l);
+}) as typeof watcher.on;
+watcher.off = ((name: string, l: (ev: UiEvent) => void) => {
+  if (name === "event") g.__vigieListeners = g.__vigieListeners!.filter((x) => x !== l);
+  return originalOff(name, l);
+}) as typeof watcher.off;
+
+if (previous?.running) {
+  const snap = previous.snapshot();
+  previous.halt(true);
+  previous.removeAllListeners();
+  console.error("[vigie] code rechargé, reprise de l'observation sur #" + snap.channel);
+  watcher.start(snap.channel, snap).catch((e) => console.error(`[vigie] reprise impossible : ${(e as Error).message}`));
+} else if (previous) {
+  previous.removeAllListeners();
+}

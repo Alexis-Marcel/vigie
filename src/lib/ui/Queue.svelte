@@ -1,19 +1,89 @@
 <script lang="ts">
-  import { live } from "./live.svelte.js";
-  import { time, pct } from "./format.js";
+  import { live } from "./live.svelte.ts";
+  import { time, pct } from "./format.ts";
+  import type { UiMessage } from "./types.ts";
 
-  const queue = $derived([...live.state.queue].reverse());
-  const pending = $derived(queue.filter((m) => !m.annotation));
+  type Sort = "recent" | "confidence";
+  let ruleFilter = $state<string | null>(null);
+  let showHandled = $state(false);
+  let sort = $state<Sort>("recent");
+  // Masqués par le modérateur sans annotation (file trop longue, cas sans intérêt). Côté client seulement.
+  let hidden = $state(new Set<string>());
+
   const rules = $derived(Object.fromEntries(live.state.rules.map((r) => [r.id, r])));
+  const all = $derived(live.state.queue);
+  const pending = $derived(all.filter((m) => !m.annotation && !hidden.has(m.id)));
+
+  const countsByRule = $derived.by(() => {
+    const c: Record<string, number> = {};
+    for (const m of pending) if (m.decision?.kind !== "pass") c[m.decision!.ruleId] = (c[m.decision!.ruleId] ?? 0) + 1;
+    return c;
+  });
+
+  const shown = $derived.by(() => {
+    let list = showHandled ? all.filter((m) => !hidden.has(m.id)) : pending;
+    if (ruleFilter) list = list.filter((m) => m.decision?.kind !== "pass" && m.decision!.ruleId === ruleFilter);
+    list = [...list];
+    if (sort === "confidence") list.sort((a, b) => conf(b) - conf(a) || b.sentAt - a.sentAt);
+    else list.sort((a, b) => b.sentAt - a.sentAt);
+    return list;
+  });
+
+  function conf(m: UiMessage) {
+    return m.decision && m.decision.kind !== "pass" ? m.decision.confidence : 0;
+  }
+
+  function hideAllShown() {
+    const next = new Set(hidden);
+    for (const m of shown) if (!m.annotation) next.add(m.id);
+    hidden = next;
+  }
+
+  function whyLabel(m: UiMessage) {
+    const d = m.decision!;
+    if (d.kind === "delete") return "supprimerait";
+    if (d.kind === "review") return d.reason === "zone grise" ? "zone grise" : d.reason === "s'adresse au bot" ? "s'adresse au bot" : "à vérifier";
+    return "";
+  }
 </script>
 
 <section>
-  <h2>À vérifier <span class="count">{pending.length}</span></h2>
-  <div class="scroll">
-    {#if queue.length === 0}
-      <p class="empty">Les messages que Vigie signalerait apparaîtront ici, avec la règle et sa certitude. Vous confirmez ou vous ignorez, et chaque réponse sert à mesurer Jev.</p>
+  <h2>
+    À vérifier <span class="count">{pending.length}</span>
+    {#if shown.length > 0 && !showHandled}
+      <button class="link" onclick={hideAllShown} title="Retire ces entrées de la file sans les annoter">Masquer {ruleFilter ? "ces" : "tout"}</button>
     {/if}
-    {#each queue as m (m.id)}
+  </h2>
+
+  {#if all.length > 0}
+    <div class="bar">
+      <div class="chips" role="group" aria-label="Filtrer par règle">
+        <button class:on={ruleFilter === null} onclick={() => (ruleFilter = null)}>Toutes <span>{pending.length}</span></button>
+        {#each live.state.rules as r (r.id)}
+          {#if countsByRule[r.id] || ruleFilter === r.id}
+            <button class:on={ruleFilter === r.id} class={r.action} onclick={() => (ruleFilter = ruleFilter === r.id ? null : r.id)}>
+              {r.label} <span>{countsByRule[r.id] ?? 0}</span>
+            </button>
+          {/if}
+        {/each}
+      </div>
+      <div class="opts">
+        <label><input type="checkbox" bind:checked={showHandled} /> traités</label>
+        <select bind:value={sort} aria-label="Tri">
+          <option value="recent">plus récents</option>
+          <option value="confidence">plus sûrs</option>
+        </select>
+      </div>
+    </div>
+  {/if}
+
+  <div class="scroll">
+    {#if all.length === 0}
+      <p class="empty">Les messages que Vigie signalerait apparaîtront ici, avec la règle et sa certitude. Vous confirmez ou vous ignorez, et chaque réponse sert à mesurer Jev.</p>
+    {:else if shown.length === 0}
+      <p class="empty">Rien en attente{ruleFilter ? ` pour « ${rules[ruleFilter]?.label} »` : ""}.</p>
+    {/if}
+    {#each shown as m (m.id)}
       {@const d = m.decision!}
       {@const rule = d.kind !== "pass" ? rules[d.ruleId] : null}
       <article class={d.kind} class:done={m.annotation}>
@@ -21,7 +91,7 @@
           <span class="rule">{rule?.label ?? (d.kind !== "pass" ? d.ruleId : "")}</span>
           {#if d.kind !== "pass"}
             <span class="p">{pct(d.confidence)}</span>
-            <span class="why">{d.kind === "delete" ? "supprimerait" : d.reason === "zone grise" ? "zone grise" : d.reason === "s'adresse au bot" ? "s'adresse au bot" : "à vérifier"}</span>
+            <span class="why">{whyLabel(m)}</span>
           {/if}
           <span class="time">{time(m.sentAt)}</span>
         </header>
@@ -53,10 +123,27 @@
   h2 {
     margin: 0; padding: 14px 16px 10px;
     font-size: 13px; font-weight: 600; color: var(--text-2);
-    display: flex; justify-content: space-between;
+    display: flex; align-items: baseline; gap: 8px;
   }
   .count { font-weight: 400; color: var(--text-3); }
-  .scroll { overflow-y: auto; padding: 0 12px 12px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+  .link { margin-left: auto; background: none; border: 0; color: var(--text-3); font-size: 12px; padding: 0; }
+  .link:hover { color: var(--text); }
+  .bar { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 10px; border-bottom: 1px solid var(--line); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button {
+    background: none; border: 1px solid var(--line); border-radius: 999px;
+    padding: 3px 10px; font-size: 12px; color: var(--text-2);
+    display: inline-flex; gap: 6px; align-items: baseline;
+  }
+  .chips button span { color: var(--text-3); font-weight: 500; }
+  .chips button.on { background: var(--panel-2); color: var(--text); border-color: var(--text-3); }
+  .chips button.on.delete { color: var(--delete); }
+  .chips button.on.flag { color: var(--review); }
+  .opts { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--text-3); }
+  .opts label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .opts input { accent-color: var(--accent); margin: 0; }
+  .opts select { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font-size: 12px; color: var(--text-2); }
+  .scroll { overflow-y: auto; padding: 10px 12px 12px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
   .empty { color: var(--text-3); padding: 24px 4px; margin: 0; max-width: 42ch; }
   article {
     background: var(--panel);
@@ -82,11 +169,11 @@
   .probs li { display: flex; gap: 6px; }
   .probs li span:last-child { color: var(--text-2); }
   footer { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
-  button {
+  footer button {
     border: 1px solid var(--line); background: var(--panel-2);
     border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 500;
   }
-  button:hover { border-color: var(--text-3); }
+  footer button:hover { border-color: var(--text-3); }
   .confirm { border-color: var(--accent); color: var(--accent); background: color-mix(in oklab, var(--accent) 10%, transparent); }
   .verdict { font-size: 13px; color: var(--text-3); }
   .verdict.ok { color: var(--accent); }
