@@ -21,7 +21,7 @@
           <span class="rule">{rule?.label ?? (d.kind !== "pass" ? d.ruleId : "")}</span>
           {#if d.kind !== "pass"}
             <span class="p">{pct(d.confidence)}</span>
-            <span class="why">{d.kind === "delete" ? "supprimerait" : d.reason === "zone grise" ? "zone grise" : d.reason === "mentionne le bot" ? "parle du bot" : "à vérifier"}</span>
+            <span class="why">{d.kind === "delete" ? "supprimerait" : d.reason === "zone grise" ? "zone grise" : d.reason === "s'adresse au bot" ? "s'adresse au bot" : "à vérifier"}</span>
           {/if}
           <span class="time">{time(m.sentAt)}</span>
         </header>

@@ -1,6 +1,11 @@
 import type { Decision, Judgement, RuleSet, ChatMessage } from "./types.js";
 
-const BOT_MENTION = /\b(vigie|bot|automod|modo|mod[ée]rat)/i;
+/**
+ * Tentatives de manipulation du bot : on ne vise plus tout message qui parle des modos
+ * (« W les modos » est un compliment), seulement ceux qui s'adressent au bot par son nom
+ * ou qui ressemblent à une instruction glissée dans le message.
+ */
+const BOT_MENTION = /\bvigie\b|ignore[sz]? (les|tes|ces) (r[èe]gles|consignes|instructions)|ce message est (ok|valide|autoris[ée]|safe)|en tant qu(?:e |['’])(ia|bot|mod[ée]rateur)|nouvelle[s]? (r[èe]gle|consigne)s?\s*:/i;
 
 /**
  * Transforme les probabilités en décision selon les seuils par règle.
@@ -35,7 +40,7 @@ export function decide(msg: ChatMessage, j: Judgement, rules: RuleSet): Decision
 
   if (best.kind === "pass" && rules.reviewIfMentionsBot && BOT_MENTION.test(msg.text)) {
     const top = [...j.verdicts].sort((a, b) => b.confidence - a.confidence)[0];
-    best = { kind: "review", ruleId: top?.ruleId ?? "", confidence: top?.confidence ?? 0, reason: "mentionne le bot" };
+    best = { kind: "review", ruleId: top?.ruleId ?? "", confidence: top?.confidence ?? 0, reason: "s'adresse au bot" };
   }
 
   return best;
