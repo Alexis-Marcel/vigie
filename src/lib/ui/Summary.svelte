@@ -12,6 +12,7 @@
     return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}`;
   });
   const actionLabel = { delete: "supprimer", flag: "vérifier", log: "noter" } as const;
+  let { onEditRules }: { onEditRules: () => void } = $props();
 </script>
 
 <aside>
@@ -39,7 +40,7 @@
   {/if}
 
   <section>
-    <h2>Règles</h2>
+    <h2>Règles <button class="edit" onclick={onEditRules}>Modifier</button></h2>
     <ul class="rules">
       {#each s.rules as r (r.id)}
         <li>
@@ -52,7 +53,7 @@
         </li>
       {/each}
     </ul>
-    <p class="hint">Les règles se modifient dans le fichier <code>rules.yaml</code> et sont relues au prochain démarrage d'observation.</p>
+    {#if s.ruleSet.context}<p class="hint">{s.ruleSet.context}</p>{/if}
   </section>
 </aside>
 
@@ -85,5 +86,6 @@
     background: var(--panel-2); border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600;
   }
   .hint { margin: 10px 0 0; padding: 0 16px; font-size: 12px; color: var(--text-3); }
-  code { font-family: inherit; color: var(--text-2); }
+  .edit { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 2px 10px; font-size: 12px; color: var(--text-2); }
+  .edit:hover { border-color: var(--accent); color: var(--accent); }
 </style>

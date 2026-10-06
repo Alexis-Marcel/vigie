@@ -40,11 +40,15 @@ export class Pipeline {
   private readonly judge: Judge;
 
   constructor(
-    private readonly rules: RuleSet,
+    private rules: RuleSet,
     private readonly store: Store,
     private readonly opts: { contextSize?: number; judge?: Judge } = {},
   ) {
     this.judge = opts.judge ?? new JevJudge(jevOptionsFromEnv());
+  }
+
+  setRules(rules: RuleSet) {
+    this.rules = rules;
   }
 
   setStreamInfo(info: StreamInfo | null) {

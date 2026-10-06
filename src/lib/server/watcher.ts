@@ -9,7 +9,7 @@ try {
 import { readTwitchChat } from "#lib/core/sources/twitch.ts";
 import { fetchStreamInfo, type StreamInfo } from "#lib/core/sources/twitch-info.ts";
 import { Store } from "#lib/core/store.ts";
-import { loadRules } from "#lib/core/rules.ts";
+import { loadRules, saveRules, parseRuleSet } from "#lib/core/rules.ts";
 import { Pipeline } from "#lib/core/pipeline.ts";
 import type { RuleSet } from "#lib/core/types.ts";
 import type { UiEvent, UiMessage, UiState } from "#lib/ui/types.ts";
@@ -24,7 +24,8 @@ const QUEUE = 200;
  */
 class Watcher extends EventEmitter {
   private store = new Store();
-  private rules: RuleSet = loadRules(process.env.VIGIE_RULES ?? "rules.yaml");
+  private rulesPath = process.env.VIGIE_RULES ?? "rules.yaml";
+  private rules: RuleSet = loadRules(this.rulesPath);
   private pipeline: Pipeline | null = null;
   private stop: (() => void) | null = null;
   private timers: ReturnType<typeof setInterval>[] = [];
@@ -50,6 +51,7 @@ class Watcher extends EventEmitter {
       context: this.pipeline?.currentContext() ?? "",
       stats: this.pipeline?.stats ?? { total: 0, prefiltered: 0, judged: 0, pass: 0, review: 0, delete: 0, errors: 0, cost: 0, latency: 0 },
       rules: this.rules.rules,
+      ruleSet: this.rules,
       ruleHits: this.ruleHits,
       recent: this.recent,
       queue: this.queue,
@@ -68,7 +70,6 @@ class Watcher extends EventEmitter {
     this.recent = [];
     this.queue = [];
     this.ruleHits = Object.fromEntries(this.rules.rules.map((r) => [r.id, 0]));
-    this.rules = loadRules(process.env.VIGIE_RULES ?? "rules.yaml");
     this.pipeline = new Pipeline(this.rules, this.store);
 
     await this.refreshStream();
@@ -108,6 +109,21 @@ class Watcher extends EventEmitter {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     this.emitEvent({ type: "state", state: this.state() });
+  }
+
+  getRules(): RuleSet {
+    return this.rules;
+  }
+
+  /** Valide, écrit le fichier, applique à l'observation en cours. Lève une erreur lisible si le jeu est invalide. */
+  updateRules(raw: unknown): RuleSet {
+    const next = parseRuleSet(raw);
+    saveRules(this.rulesPath, next);
+    this.rules = next;
+    for (const r of next.rules) this.ruleHits[r.id] ??= 0;
+    this.pipeline?.setRules(next);
+    this.emitEvent({ type: "rules", ruleSet: next, context: this.pipeline?.currentContext() ?? "" });
+    return next;
   }
 
   /** Valider = la règle s'appliquait ; ignorer = aucune règle ne s'appliquait. Les deux sont des annotations. */

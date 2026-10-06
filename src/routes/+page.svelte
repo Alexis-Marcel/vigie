@@ -5,6 +5,9 @@
   import Chat from "#lib/ui/Chat.svelte";
   import Queue from "#lib/ui/Queue.svelte";
   import Summary from "#lib/ui/Summary.svelte";
+  import RulesEditor from "#lib/ui/RulesEditor.svelte";
+
+  let editing = $state(false);
 
   onMount(() => {
     live.connect();
@@ -17,8 +20,11 @@
   <main>
     <Chat />
     <Queue />
-    <Summary />
+    <Summary onEditRules={() => (editing = true)} />
   </main>
+  {#if editing}
+    <RulesEditor onclose={() => (editing = false)} />
+  {/if}
 </div>
 
 <style>

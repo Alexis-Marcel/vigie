@@ -42,7 +42,9 @@ pnpm dev          # http://localhost:5173
 Une page, trois colonnes : le chat qui défile avec, à gauche de chaque message, une jauge
 colorée par la probabilité la plus forte ; la file des messages à vérifier, avec « Confirmer »
 et « Ignorer » qui enregistrent une annotation ; le bilan, le contexte envoyé à Jev et les
-règles. On entre une chaîne, on observe. Rien n'est supprimé.
+règles. « Modifier » ouvre l'éditeur de règles : nom, question, action, seuil, ordre, contexte
+de la chaîne. L'enregistrement écrit `rules.yaml` et s'applique à l'observation en cours.
+On entre une chaîne, on observe. Rien n'est supprimé.
 
 ## Commandes en ligne
 
@@ -70,7 +72,7 @@ minutes et horodaté : le rejeu utilise celui qui était en vigueur à l'instant
 - [x] Interface : chat en direct, file de vérification, bilan, contexte, règles
 - [ ] Seuils et formulations réglés d'après les annotations
 - [ ] Mode action : suppression via Helix, compte modérateur en OAuth
-- [ ] Édition des règles et des seuils depuis l'interface
+- [x] Édition des règles, des seuils et du contexte depuis l'interface, appliquée à chaud
 
 ## Stack
 

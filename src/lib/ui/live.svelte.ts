@@ -1,4 +1,5 @@
-import type { UiEvent, UiMessage, UiState } from "./types.js";
+import type { UiEvent, UiMessage, UiState } from "./types.ts";
+import type { RuleSet } from "#lib/core/types.ts";
 
 const empty: UiState = {
   channel: null,
@@ -8,6 +9,7 @@ const empty: UiState = {
   context: "",
   stats: { total: 0, prefiltered: 0, judged: 0, pass: 0, review: 0, delete: 0, errors: 0, cost: 0, latency: 0 },
   rules: [],
+  ruleSet: { channel: "", context: "", reviewIfMentionsBot: true, rules: [] },
   ruleHits: {},
   recent: [],
   queue: [],
@@ -51,6 +53,11 @@ export class Live {
         this.state.stream = ev.stream;
         this.state.context = ev.context;
         break;
+      case "rules":
+        this.state.ruleSet = ev.ruleSet;
+        this.state.rules = ev.ruleSet.rules;
+        this.state.context = ev.context;
+        break;
       case "annotation": {
         for (const list of [this.state.recent, this.state.queue]) {
           const m = list.find((x) => x.id === ev.id);
@@ -74,6 +81,19 @@ export class Live {
 
   async stop() {
     await fetch("/api/stop", { method: "POST" });
+  }
+
+  /** Enregistre le jeu de règles. Renvoie null si tout va bien, sinon le message d'erreur. */
+  async saveRules(ruleSet: RuleSet): Promise<string | null> {
+    const body = {
+      channel: ruleSet.channel,
+      context: ruleSet.context,
+      review_if_mentions_bot: ruleSet.reviewIfMentionsBot,
+      rules: ruleSet.rules,
+    };
+    const res = await fetch("/api/rules", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (res.ok) return null;
+    return (await res.json().catch(() => ({ message: res.statusText }))).message as string;
   }
 
   async annotate(id: string, verdict: "confirmed" | "dismissed") {
