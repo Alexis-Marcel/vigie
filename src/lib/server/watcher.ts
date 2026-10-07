@@ -42,6 +42,10 @@ class Watcher extends EventEmitter {
   private stop: (() => void) | null = null;
   private timers: ReturnType<typeof setInterval>[] = [];
   private session = "";
+  /** Incrémenté à chaque start/halt : un démarrage dont le numéro n'est plus courant s'abandonne. */
+  private generation = 0;
+  /** Chaîne d'un démarrage en cours (avant que la lecture soit connectée). */
+  pendingChannel: string | null = null;
 
   channel: string | null = null;
   startedAt: number | null = null;
@@ -74,9 +78,15 @@ class Watcher extends EventEmitter {
     this.emit("event", ev);
   }
 
+  get active() {
+    return this.running || this.pendingChannel !== null;
+  }
+
   async start(channel: string, resume?: Snapshot) {
     if (this.running) this.halt(true);
+    const gen = ++this.generation;
     this.channel = channel.toLowerCase().replace(/^#/, "");
+    this.pendingChannel = this.channel;
     this.session = resume?.session ?? new Date().toISOString();
     this.startedAt = resume?.startedAt ?? Date.now();
     this.recent = resume?.recent ?? [];
@@ -88,6 +98,8 @@ class Watcher extends EventEmitter {
     if (this.stream) this.pipeline.setStreamInfo(this.stream);
 
     await this.refreshStream();
+    if (gen !== this.generation) return; // un halt ou un autre start est passé entre-temps
+    this.pendingChannel = null;
     this.timers.push(setInterval(() => this.refreshStream(), 5 * 60_000));
 
     this.stop = readTwitchChat({
@@ -119,6 +131,8 @@ class Watcher extends EventEmitter {
   }
 
   halt(silent = false) {
+    this.generation++;
+    this.pendingChannel = null;
     this.stop?.();
     this.stop = null;
     for (const t of this.timers) clearInterval(t);
@@ -229,7 +243,7 @@ watcher.off = ((name: string, l: (ev: UiEvent) => void) => {
   return originalOff(name, l);
 }) as typeof watcher.off;
 
-if (previous?.running) {
+if (previous?.active) {
   const snap = previous.snapshot();
   previous.halt(true);
   previous.removeAllListeners();
