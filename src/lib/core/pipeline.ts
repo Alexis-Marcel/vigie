@@ -25,6 +25,9 @@ export interface PipelineStats {
   errors: number;
   cost: number;
   latency: number;
+  /** Médiane et 95e centile sur les derniers appels (la moyenne est faussée par les rares appels qui décrochent). */
+  p50: number;
+  p95: number;
 }
 
 /**
@@ -34,7 +37,8 @@ export interface PipelineStats {
  * et peut changer en cours de route.
  */
 export class Pipeline {
-  readonly stats: PipelineStats = { total: 0, prefiltered: 0, judged: 0, pass: 0, review: 0, delete: 0, errors: 0, cost: 0, latency: 0 };
+  readonly stats: PipelineStats = { total: 0, prefiltered: 0, judged: 0, pass: 0, review: 0, delete: 0, errors: 0, cost: 0, latency: 0, p50: 0, p95: 0 };
+  private latencies: number[] = [];
   private recent: ChatMessage[] = [];
   private streamInfo: StreamInfo | null = null;
   private readonly judge: Judge;
@@ -79,6 +83,13 @@ export class Pipeline {
       this.stats.judged++;
       this.stats.cost += judgement.costUsd ?? 0;
       this.stats.latency += judgement.latencyMs;
+      this.latencies.push(judgement.latencyMs);
+      if (this.latencies.length > 2000) this.latencies.shift();
+      if (this.stats.judged % 10 === 0 || this.stats.judged < 10) {
+        const sorted = [...this.latencies].sort((a, b) => a - b);
+        this.stats.p50 = sorted[Math.floor(sorted.length * 0.5)] ?? 0;
+        this.stats.p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
+      }
       const decision = decide(m, judgement, this.rules);
       this.stats[decision.kind]++;
       return { message: m, judgement, decision };
@@ -108,5 +119,5 @@ export function formatStats(s: PipelineStats): string {
   const per10k = s.judged ? ((s.cost / s.judged) * 10_000).toFixed(2) : "?";
   return `${s.total} messages, ${s.prefiltered} écartés par le préfiltre, ${s.judged} jugés par Jev, ${s.errors} erreurs
 laisser passer ${s.pass} · vérification ${s.review} · suppression ${s.delete}
-latence moyenne ${s.judged ? Math.round(s.latency / s.judged) : 0} ms · coût ${s.cost.toFixed(4)} $ (${per10k} $ / 10 000 messages jugés)`;
+latence médiane ${s.p50} ms (p95 ${s.p95} ms) · coût ${s.cost.toFixed(4)} $ (${per10k} $ / 10 000 messages jugés)`;
 }

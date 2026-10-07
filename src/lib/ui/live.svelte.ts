@@ -7,7 +7,7 @@ const empty: UiState = {
   startedAt: null,
   stream: null,
   context: "",
-  stats: { total: 0, prefiltered: 0, judged: 0, pass: 0, review: 0, delete: 0, errors: 0, cost: 0, latency: 0 },
+  stats: { total: 0, prefiltered: 0, judged: 0, pass: 0, review: 0, delete: 0, errors: 0, cost: 0, latency: 0, p50: 0, p95: 0 },
   rules: [],
   ruleSet: { channel: "", context: "", reviewIfMentionsBot: true, rules: [] },
   ruleHits: {},

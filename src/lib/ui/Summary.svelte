@@ -4,7 +4,7 @@
 
   const s = $derived(live.state);
   const st = $derived(s.stats);
-  const latency = $derived(st.judged ? Math.round(st.latency / st.judged) : 0);
+  const latency = $derived(st.p50);
   const per10k = $derived(st.judged ? (st.cost / st.judged) * 10_000 : 0);
   const elapsed = $derived.by(() => {
     if (!s.startedAt) return null;
@@ -25,7 +25,8 @@
       <div class="sep"><dt>Laissés passer</dt><dd>{int(st.pass)}</dd></div>
       <div><dt class="review">À vérifier</dt><dd>{int(st.review)}</dd></div>
       <div><dt class="delete">Supprimerait</dt><dd>{int(st.delete)}</dd></div>
-      <div class="sep"><dt>Latence moyenne</dt><dd>{latency ? `${latency} ms` : "–"}</dd></div>
+      <div class="sep"><dt>Latence médiane</dt><dd>{latency ? `${latency} ms` : "–"}</dd></div>
+      <div><dt>Latence p95</dt><dd>{st.p95 ? `${st.p95} ms` : "–"}</dd></div>
       <div><dt>Coût</dt><dd>{st.judged ? money(st.cost) : "–"}</dd></div>
       <div><dt>Pour 10 000 messages</dt><dd>{st.judged ? money(per10k) : "–"}</dd></div>
       {#if st.errors}<div><dt class="delete">Erreurs</dt><dd>{int(st.errors)}</dd></div>{/if}

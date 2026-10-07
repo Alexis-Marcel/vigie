@@ -200,7 +200,7 @@ class Watcher extends EventEmitter {
 }
 
 function emptyStats(): PipelineStats {
-  return { total: 0, prefiltered: 0, judged: 0, pass: 0, review: 0, delete: 0, errors: 0, cost: 0, latency: 0 };
+  return { total: 0, prefiltered: 0, judged: 0, pass: 0, review: 0, delete: 0, errors: 0, cost: 0, latency: 0, p50: 0, p95: 0 };
 }
 
 /*
