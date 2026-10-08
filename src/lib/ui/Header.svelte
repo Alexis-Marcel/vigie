@@ -36,9 +36,10 @@
       return `Connecté comme ${who}. Observer ne touche à rien ; Assister et Modérer agissent sur vos chaînes.`;
     }
     const deleteThreshold = Math.min(...s.rules.filter((r) => r.action === "delete").map((r) => Math.round(r.threshold * 100)));
-    if (s.mode === "observe") return `Vigie lit le chat de ${s.channel} et ne touche à rien. Elle montre ce qu'elle ferait.`;
-    if (s.mode === "assist") return `Vigie signale, vous agissez au nom de ${who}. Rien n'est supprimé sans votre clic.`;
-    return `Vigie supprime seule dès ${Number.isFinite(deleteThreshold) ? deleteThreshold : 90} % au nom de ${who}. Vous traitez la zone grise.`;
+    const offline = s.stream && !s.stream.live ? ` ${s.channel} est hors ligne : le chat reste ouvert, mais il y aura peu de messages.` : "";
+    if (s.mode === "observe") return `Vigie lit le chat de ${s.channel} et ne touche à rien. Elle montre ce qu'elle ferait.${offline}`;
+    if (s.mode === "assist") return `Vigie signale, vous agissez au nom de ${who}. Rien n'est supprimé sans votre clic.${offline}`;
+    return `Vigie supprime seule dès ${Number.isFinite(deleteThreshold) ? deleteThreshold : 90} % au nom de ${who}. Vous traitez la zone grise.${offline}`;
   });
 
   // Après la connexion Twitch, on reprend ce que l'utilisateur voulait faire.
@@ -145,6 +146,15 @@
 
     {#if s.running}
       <button type="button" class="ghost" onclick={stop}>Arrêter</button>
+      {#if s.stream}
+        <span class="livebadge" class:live={s.stream.live}>
+          {#if s.stream.live}
+            en live, {s.stream.game || "sans catégorie"}, {int(s.stream.viewers)} spectateurs
+          {:else}
+            hors ligne
+          {/if}
+        </span>
+      {/if}
     {/if}
   </form>
 
@@ -153,9 +163,6 @@
       {error}
     {:else}
       {sentence}
-      {#if s.running && s.stream?.live}
-        <span class="meta">{s.stream.game || "sans catégorie"}, {int(s.stream.viewers)} spectateurs.</span>
-      {/if}
     {/if}
   </p>
 
@@ -243,7 +250,13 @@
 
   .sentence { grid-area: sentence; margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.4; }
   .sentence.err { color: var(--delete); }
-  .meta { color: var(--text-3); }
+  .livebadge {
+    align-self: center; display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--text-3); padding-left: 4px;
+  }
+  .livebadge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+  .livebadge.live { color: var(--text); }
+  .livebadge.live::before { background: var(--delete); box-shadow: 0 0 0 3px color-mix(in oklab, var(--delete) 25%, transparent); }
 
   .account { grid-area: account; display: flex; align-items: center; gap: 10px; padding-left: 20px; border-left: 1px solid var(--line); align-self: stretch; }
   .account img { border-radius: 50%; }
