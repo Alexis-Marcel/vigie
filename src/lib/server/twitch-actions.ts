@@ -25,6 +25,36 @@ export async function broadcasterId(store: Store, account: Account, login: strin
   return u.id;
 }
 
+export interface ModeratedChannel {
+  login: string;
+  displayName: string;
+  isOwn: boolean;
+}
+
+const channelsCache = new Map<string, { at: number; list: ModeratedChannel[] }>();
+
+/** Chaînes sur lesquelles le compte peut agir : la sienne, puis celles où il est modérateur. Cache de 5 minutes. */
+export async function moderatedChannels(store: Store, account: Account): Promise<ModeratedChannel[]> {
+  const cached = channelsCache.get(account.userId);
+  if (cached && Date.now() - cached.at < 5 * 60_000) return cached.list;
+
+  const list: ModeratedChannel[] = [{ login: account.login, displayName: account.displayName, isOwn: true }];
+  let cursor: string | undefined;
+  do {
+    const q = new URLSearchParams({ user_id: account.userId, first: "100" });
+    if (cursor) q.set("after", cursor);
+    const res = await helix(store, account, `moderation/channels?${q}`);
+    if (!res.ok) throw new Error(await explain(res));
+    const body = (await res.json()) as { data: { broadcaster_login: string; broadcaster_name: string }[]; pagination?: { cursor?: string } };
+    for (const c of body.data) list.push({ login: c.broadcaster_login, displayName: c.broadcaster_name, isOwn: false });
+    cursor = body.pagination?.cursor;
+  } while (cursor);
+
+  list.sort((a, b) => Number(b.isOwn) - Number(a.isOwn) || a.displayName.localeCompare(b.displayName, "fr"));
+  channelsCache.set(account.userId, { at: Date.now(), list });
+  return list;
+}
+
 /** Traduit les refus de Twitch en phrases utiles. */
 async function explain(res: Response): Promise<string> {
   const text = await res.text().catch(() => "");

@@ -1,7 +1,13 @@
 import type { Account, Store } from "#lib/core/store.ts";
 
 /** Droits demandés : lire le chat (pour EventSub plus tard), supprimer des messages, timeout/ban, avertir. */
-export const SCOPES = ["user:read:chat", "moderator:manage:chat_messages", "moderator:manage:banned_users", "moderator:manage:warnings"];
+export const SCOPES = [
+  "user:read:chat",
+  "user:read:moderated_channels",
+  "moderator:manage:chat_messages",
+  "moderator:manage:banned_users",
+  "moderator:manage:warnings",
+];
 
 const creds = () => {
   const id = process.env.TWITCH_CLIENT_ID;

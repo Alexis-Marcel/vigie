@@ -41,12 +41,13 @@
 
   function whyLabel(m: UiMessage) {
     const d = m.decision!;
-    if (d.kind === "delete") return live.state.autoDelete ? "suppression auto" : "supprimerait";
+    if (d.kind === "delete") return live.state.mode === "moderate" ? "suppression auto" : "supprimerait";
     if (d.kind === "review") return d.reason === "zone grise" ? "zone grise" : d.reason === "s'adresse au bot" ? "s'adresse au bot" : "à vérifier";
     return "";
   }
 
-  const canAct = $derived(!!live.state.account);
+  const canAct = $derived(!!live.state.account && live.state.mode !== "observe");
+  const title = $derived(live.state.mode === "observe" ? "À vérifier" : "À traiter");
   let actErrors = $state<Record<string, string>>({});
   async function act(m: UiMessage, kind: "delete" | "timeout" | "warn") {
     const err = await live.act(m.id, kind);
@@ -57,7 +58,7 @@
 
 <section>
   <h2>
-    À vérifier <span class="count">{pending.length}</span>
+    {title} <span class="count">{pending.length}</span>
     {#if shown.length > 0 && !showHandled}
       <button class="link" onclick={hideAllShown} title="Retire ces entrées de la file sans les annoter">Masquer {ruleFilter ? "ces" : "tout"}</button>
     {/if}

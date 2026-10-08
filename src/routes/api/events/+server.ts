@@ -10,18 +10,31 @@ export const GET: RequestHandler = ({ cookies }) => {
   let onEvent: ((ev: UiEvent) => void) | null = null;
   let keepAlive: ReturnType<typeof setInterval> | null = null;
 
+  const detach = () => {
+    if (onEvent) watcher.off("event", onEvent);
+    if (keepAlive) clearInterval(keepAlive);
+    onEvent = null;
+    keepAlive = null;
+  };
+
   const stream = new ReadableStream({
     start(controller) {
-      const send = (ev: UiEvent) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
+      // Un navigateur parti sans prévenir laisse un contrôleur fermé : la première
+      // écriture échoue, on se détache alors au lieu de faire échouer l'émetteur.
+      const write = (chunk: string) => {
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          detach();
+        }
+      };
+      const send = (ev: UiEvent) => write(`data: ${JSON.stringify(ev)}\n\n`);
       send({ type: "state", state: watcher.state(account) });
       onEvent = send;
       watcher.on("event", onEvent);
-      keepAlive = setInterval(() => controller.enqueue(encoder.encode(": ping\n\n")), 20_000);
+      keepAlive = setInterval(() => write(": ping\n\n"), 20_000);
     },
-    cancel() {
-      if (onEvent) watcher.off("event", onEvent);
-      if (keepAlive) clearInterval(keepAlive);
-    },
+    cancel: detach,
   });
 
   return new Response(stream, {

@@ -1,9 +1,9 @@
-import type { UiEvent, UiMessage, UiState } from "./types.ts";
+import type { Mode, UiChannel, UiEvent, UiMessage, UiState } from "./types.ts";
 import type { RuleSet } from "#lib/core/types.ts";
 
 const empty: UiState = {
   account: null,
-  autoDelete: false,
+  mode: "observe",
   channel: null,
   running: false,
   startedAt: null,
@@ -23,6 +23,8 @@ export class Live {
   connected = $state(false);
   busy = $state(false);
   error = $state<string | null>(null);
+  /** Chaînes où le compte connecté peut agir. Chargées une fois le compte connu. */
+  channels = $state<UiChannel[]>([]);
   private es: EventSource | null = null;
 
   connect() {
@@ -33,6 +35,15 @@ export class Live {
     this.es.onmessage = (e) => this.apply(JSON.parse(e.data) as UiEvent);
   }
 
+  async loadChannels() {
+    if (!this.state.account) {
+      this.channels = [];
+      return;
+    }
+    const res = await fetch("/api/channels");
+    this.channels = res.ok ? ((await res.json()) as UiChannel[]) : [];
+  }
+
   disconnect() {
     this.es?.close();
     this.es = null;
@@ -40,9 +51,12 @@ export class Live {
 
   private apply(ev: UiEvent) {
     switch (ev.type) {
-      case "state":
+      case "state": {
+        const hadAccount = !!this.state.account;
         this.state = ev.state;
+        if (!!ev.state.account !== hadAccount || (ev.state.account && this.channels.length === 0)) void this.loadChannels();
         break;
+      }
       case "message":
         upsert(this.state.recent, ev.message, 300);
         if (ev.message.decision && ev.message.decision.kind !== "pass") upsert(this.state.queue, ev.message, 200);
@@ -56,7 +70,7 @@ export class Live {
         this.state.context = ev.context;
         break;
       case "mode":
-        this.state.autoDelete = ev.autoDelete;
+        this.state.mode = ev.mode;
         break;
       case "rules":
         this.state.ruleSet = ev.ruleSet;
@@ -73,15 +87,23 @@ export class Live {
     }
   }
 
-  async watch(channel: string) {
+  /** Démarre ou redémarre l'observation d'une chaîne dans un mode. */
+  async watch(channel: string, mode: Mode) {
     this.busy = true;
     this.error = null;
     try {
-      const res = await fetch("/api/watch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel }) });
+      const res = await fetch("/api/watch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel, mode }) });
       if (!res.ok) this.error = (await res.json().catch(() => ({ message: res.statusText }))).message;
     } finally {
       this.busy = false;
     }
+  }
+
+  /** Change le mode de l'observation en cours. Renvoie null, ou le message d'erreur. */
+  async setMode(mode: Mode): Promise<string | null> {
+    const res = await fetch("/api/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) });
+    if (res.ok) return null;
+    return (await res.json().catch(() => ({ message: res.statusText }))).message as string;
   }
 
   async stop() {
@@ -104,14 +126,8 @@ export class Live {
   async logout() {
     await fetch("/auth/logout", { method: "POST" });
     this.state.account = null;
-    this.state.autoDelete = false;
-  }
-
-  /** Active ou coupe la suppression automatique. Renvoie null, ou le message d'erreur. */
-  async setAutoDelete(on: boolean): Promise<string | null> {
-    const res = await fetch("/api/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autoDelete: on }) });
-    if (res.ok) return null;
-    return (await res.json().catch(() => ({ message: res.statusText }))).message as string;
+    this.state.mode = "observe";
+    this.channels = [];
   }
 
   /** Agit sur Twitch depuis la file. Le message mis à jour revient par le flux. */

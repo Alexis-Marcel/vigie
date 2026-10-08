@@ -1,80 +1,147 @@
 <script lang="ts">
-  import { live } from "./live.svelte.js";
-  import { int } from "./format.js";
+  import { live } from "./live.svelte.ts";
+  import { int } from "./format.ts";
+  import type { Mode } from "./types.ts";
 
-  let channel = $state("");
   const s = $derived(live.state);
+  let channel = $state("");
+  let error = $state<string | null>(null);
+
+  // Le champ suit la chaîne en cours tant que l'utilisateur ne l'a pas modifié.
   $effect(() => {
     if (s.channel && !channel) channel = s.channel;
   });
+  // Un compte connecté avec une seule chaîne possible : on la propose d'office.
+  $effect(() => {
+    if (!channel && live.channels.length === 1) channel = live.channels[0].login;
+  });
+
+  const modes: Array<{ id: Mode; label: string; needsAccount: boolean }> = [
+    { id: "observe", label: "Observer", needsAccount: false },
+    { id: "assist", label: "Assister", needsAccount: true },
+    { id: "moderate", label: "Modérer", needsAccount: true },
+  ];
+
+  let pendingMode = $state<Mode | null>(null);
+  const restricted = $derived(s.mode !== "observe" || pendingMode !== null);
+
+  const typed = $derived(channel.trim().toLowerCase().replace(/^#/, ""));
+  const sameChannel = $derived(s.running && s.channel === typed);
+  const allowed = $derived((m: Mode) => m === "observe" || (!!s.account && (!typed || live.channels.some((c) => c.login === typed))));
+
+  const sentence = $derived.by(() => {
+    const who = s.account?.displayName ?? "";
+    if (!s.running) {
+      if (!s.account) return "Choisissez une chaîne. En Observer, Vigie lit, juge et vous montre, sans toucher au chat.";
+      return `Connecté comme ${who}. Observer ne touche à rien ; Assister et Modérer agissent sur vos chaînes.`;
+    }
+    const deleteThreshold = Math.min(...s.rules.filter((r) => r.action === "delete").map((r) => Math.round(r.threshold * 100)));
+    if (s.mode === "observe") return `Vigie lit le chat de ${s.channel} et ne touche à rien. Elle montre ce qu'elle ferait.`;
+    if (s.mode === "assist") return `Vigie signale, vous agissez au nom de ${who}. Rien n'est supprimé sans votre clic.`;
+    return `Vigie supprime seule dès ${Number.isFinite(deleteThreshold) ? deleteThreshold : 90} % au nom de ${who}. Vous traitez la zone grise.`;
+  });
+
+  async function choose(mode: Mode) {
+    error = null;
+    if (mode !== "observe" && !s.account) {
+      error = "Assister et Modérer agissent sur Twitch : connectez d'abord un compte modérateur.";
+      return;
+    }
+    if (!typed) {
+      error = "Choisissez d'abord une chaîne.";
+      return;
+    }
+    if (mode !== "observe" && !live.channels.some((c) => c.login === typed)) {
+      error = `${s.account!.displayName} n'est pas modérateur de ${typed}. Choisissez une de vos chaînes.`;
+      return;
+    }
+    if (mode === "moderate" && s.mode !== "moderate") {
+      const ok = confirm(`Vigie supprimera seule, au nom de ${s.account!.displayName}, les messages qui dépassent le seuil d'une règle « supprimer » sur ${typed}. Activer ?`);
+      if (!ok) return;
+    }
+    pendingMode = mode;
+    if (sameChannel) error = await live.setMode(mode);
+    else await live.watch(typed, mode);
+    if (live.error) error = live.error;
+    pendingMode = null;
+  }
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
-    if (channel.trim()) live.watch(channel.trim());
+    void choose(s.running ? s.mode : "observe");
   }
 
-  let modeError = $state<string | null>(null);
-  async function toggleAuto() {
-    const on = !s.autoDelete;
-    if (on && !confirm(`Vigie supprimera seule, au nom de ${s.account?.displayName}, les messages qui dépassent le seuil d'une règle « supprimer ». Activer ?`)) return;
-    modeError = await live.setAutoDelete(on);
+  async function stop() {
+    await live.stop();
   }
 </script>
 
 <header>
   <div class="brand">
-    <span class="beacon" class:on={s.running && live.connected} aria-hidden="true"></span>
+    <span class="beacon" class:on={s.running && live.connected} class:acting={s.running && s.mode !== "observe"} aria-hidden="true"></span>
     <span class="name">Vigie</span>
   </div>
 
-  <form onsubmit={submit}>
-    <label class="field">
-      <span class="at">twitch.tv/</span>
-      <input
-        bind:value={channel}
-        placeholder="nom de la chaîne"
-        spellcheck="false"
-        autocomplete="off"
-        disabled={live.busy}
-      />
-    </label>
-    {#if s.running && s.channel === channel.trim().toLowerCase()}
-      <button type="button" class="ghost" onclick={() => live.stop()}>Arrêter</button>
+  <form onsubmit={submit} class="controls">
+    {#if s.account && live.channels.length > 0 && (restricted || live.channels.some((c) => c.login === typed) || !typed)}
+      <label class="field">
+        <span class="at">twitch.tv/</span>
+        <select bind:value={channel} disabled={live.busy} aria-label="Chaîne">
+          {#if !live.channels.some((c) => c.login === typed) && typed}
+            <option value={typed}>{typed} (lecture seule)</option>
+          {/if}
+          {#each live.channels as c (c.login)}
+            <option value={c.login}>{c.displayName}{c.isOwn ? " (ma chaîne)" : ""}</option>
+          {/each}
+          <option value="">autre chaîne, en lecture seule</option>
+        </select>
+      </label>
     {:else}
-      <button type="submit" class="primary" disabled={live.busy || !channel.trim()}>
-        {live.busy ? "Connexion" : s.running ? "Changer de chaîne" : "Observer"}
-      </button>
+      <label class="field">
+        <span class="at">twitch.tv/</span>
+        <input bind:value={channel} placeholder="nom de la chaîne" spellcheck="false" autocomplete="off" disabled={live.busy} />
+      </label>
+    {/if}
+
+    <div class="modes" role="radiogroup" aria-label="Mode">
+      {#each modes as m (m.id)}
+        <button
+          type="button"
+          class={m.id}
+          class:on={s.running && sameChannel && s.mode === m.id}
+          class:locked={!allowed(m.id)}
+          aria-checked={s.running && sameChannel && s.mode === m.id}
+          role="radio"
+          disabled={live.busy}
+          title={m.needsAccount && !s.account ? "Demande un compte modérateur" : ""}
+          onclick={() => choose(m.id)}
+        >
+          {pendingMode === m.id ? "…" : m.label}
+        </button>
+      {/each}
+    </div>
+
+    {#if s.running}
+      <button type="button" class="ghost" onclick={stop}>Arrêter</button>
     {/if}
   </form>
 
-  <div class="status">
-    {#if live.error}
-      <span class="err">{live.error}</span>
-    {:else if modeError}
-      <span class="err">{modeError}</span>
-    {:else if s.stream}
-      {#if s.stream.live}
-        <span class="live">en live</span>
-        <span>{s.stream.game || "sans catégorie"}</span>
-        <span class="muted">{int(s.stream.viewers)} spectateurs</span>
-      {:else}
-        <span class="muted">hors ligne, le chat reste lisible</span>
+  <p class="sentence" class:err={!!error}>
+    {#if error}
+      {error}
+    {:else}
+      {sentence}
+      {#if s.running && s.stream?.live}
+        <span class="meta">{s.stream.game || "sans catégorie"}, {int(s.stream.viewers)} spectateurs.</span>
       {/if}
-    {:else if !s.running}
-      <span class="muted">{s.account ? "Vigie lit, juge et vous montre. Elle n'agit que si vous le demandez." : "Rien n'est supprimé. Vigie lit, juge et vous montre."}</span>
     {/if}
-  </div>
+  </p>
 
   <div class="account">
     {#if s.account}
-      <label class="auto" class:on={s.autoDelete} title="Supprimer automatiquement au-dessus du seuil des règles « supprimer »">
-        <input type="checkbox" checked={s.autoDelete} onchange={toggleAuto} />
-        <span class="track"><span class="knob"></span></span>
-        <span>{s.autoDelete ? "Suppression auto active" : "Suppression auto"}</span>
-      </label>
-      <img src={s.account.avatar} alt="" width="28" height="28" />
+      <img src={s.account.avatar} alt="" width="26" height="26" />
       <span class="who">{s.account.displayName}</span>
-      <button type="button" class="ghost small" onclick={() => live.logout()}>Déconnecter</button>
+      <button type="button" class="link" onclick={() => live.logout()}>Déconnecter</button>
     {:else}
       <a class="twitch" href="/auth/twitch">Connecter un compte modérateur</a>
     {/if}
@@ -84,14 +151,16 @@
 <style>
   header {
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: "brand controls account" "brand sentence account";
     align-items: center;
-    gap: 24px;
-    padding: 14px 20px;
+    column-gap: 24px;
+    row-gap: 6px;
+    padding: 12px 20px;
     border-bottom: 1px solid var(--line);
     background: var(--bg);
   }
-  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand { grid-area: brand; display: flex; align-items: center; gap: 10px; }
   .name { font-weight: 600; font-size: 17px; letter-spacing: -0.01em; }
   .beacon {
     width: 10px; height: 10px; border-radius: 50%;
@@ -100,17 +169,18 @@
   }
   .beacon.on {
     background: var(--accent);
-    box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent);
     animation: breathe 2.4s ease-in-out infinite;
   }
+  .beacon.on.acting { background: var(--delete); --glow: var(--delete); }
   @keyframes breathe {
-    0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent); }
-    50% { box-shadow: 0 0 0 7px color-mix(in oklab, var(--accent) 8%, transparent); }
+    0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--glow, var(--accent)) 18%, transparent); }
+    50% { box-shadow: 0 0 0 7px color-mix(in oklab, var(--glow, var(--accent)) 8%, transparent); }
   }
-  form { display: flex; gap: 8px; max-width: 520px; }
+
+  .controls { grid-area: controls; display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
   .field {
-    flex: 1;
     display: flex; align-items: center;
+    min-width: 260px;
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius);
@@ -119,55 +189,54 @@
   }
   .field:focus-within { border-color: var(--accent); }
   .at { color: var(--text-3); }
-  input {
+  input, select {
     flex: 1; min-width: 0;
     background: none; border: 0; outline: 0;
     padding: 9px 0 9px 2px;
   }
+  select { cursor: pointer; }
+  select option { background: var(--panel); }
   input::placeholder { color: var(--text-3); }
-  button {
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 9px 16px;
-    font-weight: 500;
-    background: var(--panel);
-    transition: background 150ms, border-color 150ms;
+
+  .modes { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--panel); }
+  .modes button {
+    border: 0; border-right: 1px solid var(--line);
+    background: none; padding: 9px 16px;
+    font-weight: 500; color: var(--text-2);
+    transition: background 150ms, color 150ms;
   }
-  button:disabled { opacity: 0.5; cursor: default; }
-  .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  .primary:not(:disabled):hover { filter: brightness(1.08); }
+  .modes button:last-child { border-right: 0; }
+  .modes button:hover:not(:disabled) { color: var(--text); background: var(--panel-2); }
+  .modes button.locked { color: var(--text-3); }
+  .modes button.on { color: var(--accent-ink); background: var(--accent); font-weight: 600; }
+  .modes button.on.assist { background: var(--review); color: #1a1200; }
+  .modes button.on.moderate { background: var(--delete); color: #1f0a08; }
+  .modes button:disabled { opacity: 0.6; cursor: default; }
+
+  .ghost {
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 9px 14px; font-weight: 500; background: var(--panel);
+  }
   .ghost:hover { border-color: var(--text-3); }
-  .status { display: flex; gap: 14px; align-items: center; justify-content: end; white-space: nowrap; }
-  .live { color: var(--accent); font-weight: 600; }
-  .muted { color: var(--text-2); }
-  .err { color: var(--delete); }
-  .account { display: flex; align-items: center; gap: 10px; padding-left: 20px; border-left: 1px solid var(--line); }
+
+  .sentence { grid-area: sentence; margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.4; }
+  .sentence.err { color: var(--delete); }
+  .meta { color: var(--text-3); }
+
+  .account { grid-area: account; display: flex; align-items: center; gap: 10px; padding-left: 20px; border-left: 1px solid var(--line); align-self: stretch; }
   .account img { border-radius: 50%; }
   .who { font-weight: 500; }
-  .small { padding: 6px 10px; font-size: 12px; }
+  .link { background: none; border: 0; color: var(--text-3); font-size: 12px; padding: 0; }
+  .link:hover { color: var(--text); }
   .twitch {
     color: var(--text); text-decoration: none; font-weight: 500;
     border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 14px;
-    background: var(--panel);
+    background: var(--panel); white-space: nowrap;
   }
   .twitch:hover { border-color: var(--accent); }
-  .auto { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-2); font-size: 13px; margin-right: 6px; }
-  .auto input { position: absolute; opacity: 0; width: 0; height: 0; }
-  .auto .track {
-    width: 34px; height: 20px; border-radius: 999px; background: var(--line);
-    position: relative; transition: background 200ms;
-  }
-  .auto .knob {
-    position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
-    background: var(--text-2); transition: transform 200ms, background 200ms;
-  }
-  .auto.on { color: var(--delete); font-weight: 600; }
-  .auto.on .track { background: color-mix(in oklab, var(--delete) 45%, var(--line)); }
-  .auto.on .knob { transform: translateX(14px); background: var(--delete); }
-  .auto input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
-  @media (max-width: 900px) {
-    header { grid-template-columns: 1fr; gap: 12px; }
-    .status { justify-content: start; white-space: normal; }
-    .account { padding-left: 0; border-left: 0; flex-wrap: wrap; }
+
+  @media (max-width: 1000px) {
+    header { grid-template-columns: 1fr; grid-template-areas: "brand" "controls" "sentence" "account"; }
+    .account { padding-left: 0; border-left: 0; }
   }
 </style>

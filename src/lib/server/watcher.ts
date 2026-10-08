@@ -5,7 +5,7 @@ import { Store } from "#lib/core/store.ts";
 import { loadRules, saveRules, parseRuleSet } from "#lib/core/rules.ts";
 import { Pipeline, type PipelineStats } from "#lib/core/pipeline.ts";
 import type { RuleSet } from "#lib/core/types.ts";
-import type { UiEvent, UiMessage, UiState } from "#lib/ui/types.ts";
+import type { Mode, UiEvent, UiMessage, UiState } from "#lib/ui/types.ts";
 import { toUiMessage } from "#lib/ui/types.ts";
 import type { Account } from "#lib/core/store.ts";
 import type { ChatMessage } from "#lib/core/types.ts";
@@ -52,7 +52,7 @@ class Watcher extends EventEmitter {
 
   /** Compte Twitch qui agit : celui qui a activé le mode auto ou cliqué dans la file. */
   actor: Account | null = null;
-  autoDelete = false;
+  mode: Mode = "observe";
   /** Messages bruts de la session, pour retrouver l'auteur au moment d'agir. */
   private raw = new Map<string, ChatMessage>();
 
@@ -74,7 +74,7 @@ class Watcher extends EventEmitter {
   state(account: Account | null = this.actor): UiState {
     return {
       account: account ? { userId: account.userId, login: account.login, displayName: account.displayName, avatar: account.avatar } : null,
-      autoDelete: this.autoDelete,
+      mode: this.mode,
       channel: this.channel,
       running: this.running,
       startedAt: this.startedAt,
@@ -138,7 +138,7 @@ class Watcher extends EventEmitter {
           if (ev.decision && ev.decision.kind !== "pass") {
             this.ruleHits[ev.decision.ruleId] = (this.ruleHits[ev.decision.ruleId] ?? 0) + 1;
             this.pushQueue(ui);
-            if (ev.decision.kind === "delete" && this.autoDelete && this.actor) {
+            if (ev.decision.kind === "delete" && this.mode === "moderate" && this.actor) {
               void this.act(ui.id, "delete", this.actor, true);
             }
           }
@@ -196,13 +196,15 @@ class Watcher extends EventEmitter {
 
   setActor(account: Account | null) {
     this.actor = account;
-    if (!account && this.autoDelete) this.setAutoDelete(false);
+    if (!account && this.mode !== "observe") this.setMode("observe");
   }
 
-  setAutoDelete(on: boolean) {
-    if (on && !this.actor) throw new Error("Connectez un compte Twitch modérateur avant d'activer la suppression automatique.");
-    this.autoDelete = on;
-    this.emitEvent({ type: "mode", autoDelete: on });
+  /** Change le mode. Assister et Modérer exigent un compte qui agit. */
+  setMode(mode: Mode) {
+    if (mode !== "observe" && !this.actor) throw new Error("Connectez un compte Twitch modérateur pour assister ou modérer.");
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.emitEvent({ type: "mode", mode });
   }
 
   /**

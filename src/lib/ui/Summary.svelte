@@ -24,7 +24,7 @@
       <div><dt>Jugés par Jev</dt><dd>{int(st.judged)}</dd></div>
       <div class="sep"><dt>Laissés passer</dt><dd>{int(st.pass)}</dd></div>
       <div><dt class="review">À vérifier</dt><dd>{int(st.review)}</dd></div>
-      <div><dt class="delete">Supprimerait</dt><dd>{int(st.delete)}</dd></div>
+      <div><dt class="delete">{s.mode === "moderate" ? "Supprimés" : "Supprimerait"}</dt><dd>{int(st.delete)}</dd></div>
       <div class="sep"><dt>Latence médiane</dt><dd>{latency ? `${latency} ms` : "–"}</dd></div>
       <div><dt>Latence p95</dt><dd>{st.p95 ? `${st.p95} ms` : "–"}</dd></div>
       <div><dt>Coût</dt><dd>{st.judged ? money(st.cost) : "–"}</dd></div>

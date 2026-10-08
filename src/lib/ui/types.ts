@@ -2,6 +2,14 @@ import type { ChatMessage, Decision, Rule, RuleSet } from "#lib/core/types.ts";
 import type { StreamInfo } from "#lib/core/sources/twitch-info.ts";
 import type { PipelineStats } from "#lib/core/pipeline.ts";
 
+/**
+ * Jusqu'où Vigie a le droit d'aller.
+ *  - observe  : lecture anonyme, aucun compte, rien ne touche Twitch ;
+ *  - assist   : Vigie signale, les humains agissent depuis la file ;
+ *  - moderate : Vigie supprime seule au-dessus des seuils, les humains traitent la zone grise.
+ */
+export type Mode = "observe" | "assist" | "moderate";
+
 /** Un message tel que l'interface le reçoit : le texte, et ce que Vigie en a fait. */
 export interface UiMessage {
   id: string;
@@ -25,11 +33,17 @@ export interface UiAccount {
   avatar: string;
 }
 
+/** Une chaîne sur laquelle le compte connecté peut agir : la sienne, ou une qu'il modère. */
+export interface UiChannel {
+  login: string;
+  displayName: string;
+  isOwn: boolean;
+}
+
 export interface UiState {
   /** Compte Twitch connecté dans ce navigateur, s'il y en a un. */
   account: UiAccount | null;
-  /** Suppression automatique des messages au-dessus du seuil d'une règle « supprimer ». */
-  autoDelete: boolean;
+  mode: Mode;
   channel: string | null;
   running: boolean;
   startedAt: number | null;
@@ -49,7 +63,7 @@ export type UiEvent =
   | { type: "stats"; stats: PipelineStats; ruleHits: Record<string, number> }
   | { type: "stream"; stream: StreamInfo | null; context: string }
   | { type: "rules"; ruleSet: RuleSet; context: string }
-  | { type: "mode"; autoDelete: boolean }
+  | { type: "mode"; mode: Mode }
   | { type: "annotation"; id: string; annotation: "confirmed" | "dismissed" };
 
 export function toUiMessage(m: ChatMessage): UiMessage {
