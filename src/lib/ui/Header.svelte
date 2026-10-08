@@ -2,6 +2,7 @@
   import { live } from "./live.svelte.ts";
   import { int } from "./format.ts";
   import type { Mode } from "./types.ts";
+  import ChannelSearch from "./ChannelSearch.svelte";
 
   const s = $derived(live.state);
 
@@ -23,8 +24,13 @@
   $effect(() => {
     if (s.running) selected = s.mode;
   });
+  // Le champ libre reprend la chaîne en cours une seule fois, à l'arrivée de l'état ; ensuite il appartient à l'utilisateur.
+  let seeded = false;
   $effect(() => {
-    if (s.channel && !typedChannel && s.mode === "observe") typedChannel = s.channel;
+    if (!seeded && s.channel) {
+      seeded = true;
+      if (s.mode === "observe") typedChannel = s.channel;
+    }
   });
   // Dès que la liste des chaînes arrive, on propose la première (sa propre chaîne) si rien n'est choisi.
   $effect(() => {
@@ -133,7 +139,7 @@
     {#if selected === "observe"}
       <label class="field">
         <span class="at">twitch.tv/</span>
-        <input bind:value={typedChannel} placeholder="nom de la chaîne" spellcheck="false" autocomplete="off" disabled={busy} />
+        <ChannelSearch bind:value={typedChannel} disabled={busy} />
       </label>
     {:else}
       <label class="field">
@@ -238,10 +244,8 @@
   }
   .field:focus-within { border-color: var(--accent); }
   .at { color: var(--text-3); }
-  input, select { flex: 1; min-width: 0; background: none; border: 0; outline: 0; padding: 9px 0 9px 2px; }
-  select { cursor: pointer; }
+  select { flex: 1; min-width: 0; background: none; border: 0; outline: 0; padding: 9px 0 9px 2px; cursor: pointer; }
   select option { background: var(--panel); }
-  input::placeholder { color: var(--text-3); }
   .loading { color: var(--text-3); padding: 9px 0; }
 
   .go, .ghost {

@@ -24,23 +24,60 @@ export async function fetchStreamInfo(channel: string): Promise<StreamInfo> {
 
 let appToken: { value: string; expiresAt: number } | null = null;
 
-async function viaHelix(login: string): Promise<StreamInfo> {
-  const clientId = process.env.TWITCH_CLIENT_ID!;
+/** Jeton d'application Twitch (client credentials), renouvelé au besoin. Null sans identifiants d'application. */
+export async function appHeaders(): Promise<Record<string, string> | null> {
+  const clientId = process.env.TWITCH_CLIENT_ID;
+  const secret = process.env.TWITCH_CLIENT_SECRET;
+  if (!clientId || !secret) return null;
   if (!appToken || appToken.expiresAt < Date.now() + 60_000) {
     const res = await fetch("https://id.twitch.tv/oauth2/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: process.env.TWITCH_CLIENT_SECRET!,
-        grant_type: "client_credentials",
-      }),
+      body: new URLSearchParams({ client_id: clientId, client_secret: secret, grant_type: "client_credentials" }),
     });
     if (!res.ok) throw new Error(`Twitch token HTTP ${res.status}`);
     const j = (await res.json()) as { access_token: string; expires_in: number };
     appToken = { value: j.access_token, expiresAt: Date.now() + j.expires_in * 1000 };
   }
-  const headers = { "Client-Id": clientId, Authorization: `Bearer ${appToken.value}` };
+  return { "Client-Id": clientId, Authorization: `Bearer ${appToken.value}` };
+}
+
+export interface ChannelHit {
+  login: string;
+  displayName: string;
+  avatar: string;
+  isLive: boolean;
+  game: string;
+  title: string;
+}
+
+/** Recherche de chaînes par nom, en live d'abord. Vide sans identifiants d'application. */
+export async function searchChannels(query: string): Promise<ChannelHit[]> {
+  const headers = await appHeaders();
+  const q = query.trim();
+  if (!headers || q.length < 2) return [];
+  const res = await fetch(`https://api.twitch.tv/helix/search/channels?first=8&query=${encodeURIComponent(q)}`, { headers });
+  if (!res.ok) throw new Error(`Helix search HTTP ${res.status}`);
+  const data = ((await res.json()) as { data: Record<string, unknown>[] }).data;
+  return data
+    .map((c) => ({
+      login: c.broadcaster_login as string,
+      displayName: c.display_name as string,
+      avatar: c.thumbnail_url as string,
+      isLive: c.is_live as boolean,
+      game: (c.game_name as string) ?? "",
+      title: (c.title as string) ?? "",
+    }))
+    .sort((a, b) => {
+      // En live d'abord, puis le nom exact, puis ceux qui commencent par la saisie ; sinon l'ordre de Twitch.
+      const ql = q.toLowerCase();
+      const rank = (c: ChannelHit) => (c.login === ql ? 0 : c.login.startsWith(ql) ? 1 : 2);
+      return Number(b.isLive) - Number(a.isLive) || rank(a) - rank(b);
+    });
+}
+
+async function viaHelix(login: string): Promise<StreamInfo> {
+  const headers = (await appHeaders())!;
 
   const streams = await fetch(`https://api.twitch.tv/helix/streams?user_login=${login}`, { headers });
   if (!streams.ok) throw new Error(`Helix streams HTTP ${streams.status}`);
