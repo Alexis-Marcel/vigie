@@ -89,8 +89,15 @@ class Watcher extends EventEmitter {
     };
   }
 
+  /** Un écouteur qui échoue (page partie) est retiré, il ne doit jamais faire échouer l'émetteur. */
   private emitEvent(ev: UiEvent) {
-    this.emit("event", ev);
+    for (const l of this.listeners("event") as Array<(ev: UiEvent) => void>) {
+      try {
+        l(ev);
+      } catch {
+        this.off("event", l);
+      }
+    }
   }
 
   get active() {

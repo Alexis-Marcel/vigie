@@ -32,7 +32,7 @@
   const sentence = $derived.by(() => {
     const who = s.account?.displayName ?? "";
     if (!s.running) {
-      if (!s.account) return "Choisissez une chaîne. En Observer, Vigie lit, juge et vous montre, sans toucher au chat.";
+      if (!s.account) return "Observer lit n'importe quel chat sans y toucher. Assister et Modérer agissent sur Twitch et vous demanderont un compte modérateur.";
       return `Connecté comme ${who}. Observer ne touche à rien ; Assister et Modérer agissent sur vos chaînes.`;
     }
     const deleteThreshold = Math.min(...s.rules.filter((r) => r.action === "delete").map((r) => Math.round(r.threshold * 100)));
@@ -41,10 +41,32 @@
     return `Vigie supprime seule dès ${Number.isFinite(deleteThreshold) ? deleteThreshold : 90} % au nom de ${who}. Vous traitez la zone grise.`;
   });
 
+  // Après la connexion Twitch, on reprend ce que l'utilisateur voulait faire.
+  const RESUME = "vigie_resume";
+  $effect(() => {
+    if (!s.account || live.channels.length === 0) return;
+    let saved: { channel: string; mode: Mode } | null = null;
+    try {
+      saved = JSON.parse(sessionStorage.getItem(RESUME) ?? "null");
+      sessionStorage.removeItem(RESUME);
+    } catch {
+      /* rien à reprendre */
+    }
+    if (!saved) return;
+    channel = live.channels.some((c) => c.login === saved!.channel) ? saved.channel : (live.channels[0]?.login ?? saved.channel);
+    void choose(saved.mode);
+  });
+
   async function choose(mode: Mode) {
     error = null;
     if (mode !== "observe" && !s.account) {
-      error = "Assister et Modérer agissent sur Twitch : connectez d'abord un compte modérateur.";
+      // Assister et Modérer agissent sur Twitch : on passe par la connexion, puis on reprend ici.
+      try {
+        sessionStorage.setItem(RESUME, JSON.stringify({ channel: typed, mode }));
+      } catch {
+        /* sans stockage, l'utilisateur recliquera */
+      }
+      location.href = "/auth/twitch";
       return;
     }
     if (!typed) {
@@ -137,15 +159,15 @@
     {/if}
   </p>
 
-  <div class="account">
-    {#if s.account}
+  {#if s.account}
+    <div class="account">
       <img src={s.account.avatar} alt="" width="26" height="26" />
       <span class="who">{s.account.displayName}</span>
       <button type="button" class="link" onclick={() => live.logout()}>Déconnecter</button>
-    {:else}
-      <a class="twitch" href="/auth/twitch">Connecter un compte modérateur</a>
-    {/if}
-  </div>
+    </div>
+  {:else}
+    <div class="account none"></div>
+  {/if}
 </header>
 
 <style>
@@ -226,14 +248,9 @@
   .account { grid-area: account; display: flex; align-items: center; gap: 10px; padding-left: 20px; border-left: 1px solid var(--line); align-self: stretch; }
   .account img { border-radius: 50%; }
   .who { font-weight: 500; }
+  .account.none { display: none; }
   .link { background: none; border: 0; color: var(--text-3); font-size: 12px; padding: 0; }
   .link:hover { color: var(--text); }
-  .twitch {
-    color: var(--text); text-decoration: none; font-weight: 500;
-    border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 14px;
-    background: var(--panel); white-space: nowrap;
-  }
-  .twitch:hover { border-color: var(--accent); }
 
   @media (max-width: 1000px) {
     header { grid-template-columns: 1fr; grid-template-areas: "brand" "controls" "sentence" "account"; }
