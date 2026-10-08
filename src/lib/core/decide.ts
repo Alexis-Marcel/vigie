@@ -43,5 +43,11 @@ export function decide(msg: ChatMessage, j: Judgement, rules: RuleSet): Decision
     best = { kind: "review", ruleId: top?.ruleId ?? "", confidence: top?.confidence ?? 0, reason: "s'adresse au bot" };
   }
 
+  // Twitch ne laisse pas un bot supprimer le message du streamer ou d'un modérateur :
+  // on le montre quand même, mais jamais en suppression.
+  if (best.kind === "delete" && msg.isMod) {
+    best = { kind: "review", ruleId: best.ruleId, confidence: best.confidence, reason: "modérateur ou streamer" };
+  }
+
   return best;
 }

@@ -42,7 +42,12 @@
   function whyLabel(m: UiMessage) {
     const d = m.decision!;
     if (d.kind === "delete") return live.state.mode === "moderate" ? "suppression auto" : "supprimerait";
-    if (d.kind === "review") return d.reason === "zone grise" ? "zone grise" : d.reason === "s'adresse au bot" ? "s'adresse au bot" : "à vérifier";
+    if (d.kind === "review") {
+      if (d.reason === "zone grise") return "zone grise";
+      if (d.reason === "s'adresse au bot") return "s'adresse au bot";
+      if (d.reason === "modérateur ou streamer") return "modérateur ou streamer, Twitch ne laisse pas supprimer";
+      return "à vérifier";
+    }
     return "";
   }
 

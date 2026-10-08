@@ -17,7 +17,6 @@ export function prefilter(msg: ChatMessage, recent: ChatMessage[]): PrefilterRes
   if (msg.emoteOnly || /^[\p{Emoji}\s]+$/u.test(text)) return { skip: true, reason: "emotes seules" };
   if (LAUGH_RE.test(text)) return { skip: true, reason: "rire ou interjection" };
   if (/^[\s\p{P}\p{S}]+$/u.test(text)) return { skip: true, reason: "ponctuation seule" };
-  if (msg.isMod) return { skip: true, reason: "modérateur ou streamer" };
   if (URL_RE.test(text) && !msg.isMod) return { skip: true, reason: "lien" };
   const dup = recent.filter((m) => m.text === text).length;
   if (dup >= 3) return { skip: true, reason: "copier-coller répété" };
