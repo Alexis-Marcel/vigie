@@ -6,5 +6,5 @@ import type { RequestHandler } from "./$types.js";
 export const GET: RequestHandler = ({ url, cookies }) => {
   const state = crypto.randomUUID();
   cookies.set("vigie_oauth_state", state, { path: "/", httpOnly: true, sameSite: "lax", maxAge: 600 });
-  redirect(302, authorizeUrl(`${url.origin}/auth/twitch/callback`, state));
+  redirect(302, authorizeUrl(`${url.origin}/auth/twitch/callback`, state), { external: true });
 };
