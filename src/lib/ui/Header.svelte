@@ -6,6 +6,26 @@
   const s = $derived(live.state);
   let channel = $state("");
   let error = $state<string | null>(null);
+  /** Connecté, on propose la liste de ses chaînes ; l'utilisateur peut repasser en champ libre pour observer n'importe qui. */
+  let freeChannel = $state(false);
+  let input: HTMLInputElement | undefined = $state();
+
+  function useFreeChannel() {
+    freeChannel = true;
+    channel = "";
+    queueMicrotask(() => input?.focus());
+  }
+
+  function useMyChannels() {
+    freeChannel = false;
+    if (!live.channels.some((c) => c.login === typed)) channel = live.channels[0]?.login ?? "";
+  }
+
+  function onSelect(e: Event) {
+    const v = (e.currentTarget as HTMLSelectElement).value;
+    if (v === "__free__") useFreeChannel();
+    else channel = v;
+  }
 
   // Le champ suit la chaîne en cours tant que l'utilisateur ne l'a pas modifié.
   $effect(() => {
@@ -23,7 +43,6 @@
   ];
 
   let pendingMode = $state<Mode | null>(null);
-  const restricted = $derived(s.mode !== "observe" || pendingMode !== null);
 
   const typed = $derived(channel.trim().toLowerCase().replace(/^#/, ""));
   const sameChannel = $derived(s.running && s.channel === typed);
@@ -106,23 +125,26 @@
   </div>
 
   <form onsubmit={submit} class="controls">
-    {#if s.account && live.channels.length > 0 && (restricted || live.channels.some((c) => c.login === typed) || !typed)}
+    {#if s.account && live.channels.length > 0 && !freeChannel}
       <label class="field">
         <span class="at">twitch.tv/</span>
-        <select bind:value={channel} disabled={live.busy} aria-label="Chaîne">
-          {#if !live.channels.some((c) => c.login === typed) && typed}
-            <option value={typed}>{typed} (lecture seule)</option>
+        <select value={live.channels.some((c) => c.login === typed) ? typed : "__other__"} onchange={onSelect} disabled={live.busy} aria-label="Chaîne">
+          {#if typed && !live.channels.some((c) => c.login === typed)}
+            <option value="__other__">{typed} (lecture seule)</option>
           {/if}
           {#each live.channels as c (c.login)}
             <option value={c.login}>{c.displayName}{c.isOwn ? " (ma chaîne)" : ""}</option>
           {/each}
-          <option value="">autre chaîne, en lecture seule</option>
+          <option value="__free__">autre chaîne, en lecture seule…</option>
         </select>
       </label>
     {:else}
       <label class="field">
         <span class="at">twitch.tv/</span>
-        <input bind:value={channel} placeholder="nom de la chaîne" spellcheck="false" autocomplete="off" disabled={live.busy} />
+        <input bind:this={input} bind:value={channel} placeholder="nom de la chaîne" spellcheck="false" autocomplete="off" disabled={live.busy} />
+        {#if s.account && live.channels.length > 0}
+          <button type="button" class="link" onclick={useMyChannels}>mes chaînes</button>
+        {/if}
       </label>
     {/if}
 
