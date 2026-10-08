@@ -48,6 +48,31 @@ export class Store {
         judged_at INTEGER NOT NULL,
         PRIMARY KEY (message_id, judge, rule_id)
       );
+      CREATE TABLE IF NOT EXISTS accounts (
+        user_id TEXT PRIMARY KEY,
+        login TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        avatar TEXT NOT NULL,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        scopes TEXT NOT NULL,
+        connected_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS actions (
+        message_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        by_user_id TEXT NOT NULL,
+        automatic INTEGER NOT NULL,
+        ok INTEGER NOT NULL,
+        error TEXT,
+        acted_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS annotations (
         message_id TEXT NOT NULL,
         rule_id TEXT NOT NULL,
@@ -143,6 +168,50 @@ export class Store {
     ).map((r) => ({ messageId: r.message_id, text: r.text, ruleId: r.rule_id, label: r.label === 1, confidence: r.confidence }));
   }
 
+  // --- comptes Twitch connectés (un seul utilisé à la fois dans le prototype)
+
+  saveAccount(a: Account): void {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO accounts (user_id, login, display_name, avatar, access_token, refresh_token, expires_at, scopes, connected_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(a.userId, a.login, a.displayName, a.avatar, a.accessToken, a.refreshToken, a.expiresAt, a.scopes.join(" "), Date.now());
+  }
+
+  account(userId: string): Account | null {
+    const r = this.db.prepare(`SELECT * FROM accounts WHERE user_id = ?`).get(userId) as Record<string, unknown> | undefined;
+    return r ? rowToAccount(r) : null;
+  }
+
+  deleteAccount(userId: string): void {
+    this.db.prepare(`DELETE FROM accounts WHERE user_id = ?`).run(userId);
+    this.db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId);
+  }
+
+  createSession(userId: string): string {
+    const id = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, "");
+    this.db.prepare(`INSERT INTO sessions (id, user_id, created_at) VALUES (?, ?, ?)`).run(id, userId, Date.now());
+    return id;
+  }
+
+  sessionAccount(sessionId: string): Account | null {
+    const r = this.db
+      .prepare(`SELECT a.* FROM sessions s JOIN accounts a ON a.user_id = s.user_id WHERE s.id = ?`)
+      .get(sessionId) as Record<string, unknown> | undefined;
+    return r ? rowToAccount(r) : null;
+  }
+
+  deleteSession(sessionId: string): void {
+    this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+  }
+
+  insertAction(a: { messageId: string; kind: string; byUserId: string; automatic: boolean; ok: boolean; error?: string }): void {
+    this.db
+      .prepare(`INSERT INTO actions (message_id, kind, by_user_id, automatic, ok, error, acted_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(a.messageId, a.kind, a.byUserId, a.automatic ? 1 : 0, a.ok ? 1 : 0, a.error ?? null, Date.now());
+  }
+
   messages(channel: string, session?: string): ChatMessage[] {
     const rows = session
       ? this.db.prepare(`SELECT * FROM messages WHERE channel = ? AND session = ? ORDER BY sent_at`).all(channel, session)
@@ -170,6 +239,30 @@ export class Store {
   close(): void {
     this.db.close();
   }
+}
+
+export interface Account {
+  userId: string;
+  login: string;
+  displayName: string;
+  avatar: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  scopes: string[];
+}
+
+function rowToAccount(r: Record<string, unknown>): Account {
+  return {
+    userId: r.user_id as string,
+    login: r.login as string,
+    displayName: r.display_name as string,
+    avatar: r.avatar as string,
+    accessToken: r.access_token as string,
+    refreshToken: r.refresh_token as string,
+    expiresAt: r.expires_at as number,
+    scopes: (r.scopes as string).split(" ").filter(Boolean),
+  };
 }
 
 function rowToMessage(r: Record<string, unknown>): ChatMessage {

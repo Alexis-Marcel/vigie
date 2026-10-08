@@ -36,7 +36,7 @@
     {/if}
     {#each msgs as m (m.id)}
       {@const g = gauge(m)}
-      <article class:skipped={m.skipped} class:flag={m.decision && m.decision.kind !== "pass"}>
+      <article class:skipped={m.skipped} class:flag={m.decision && m.decision.kind !== "pass"} class:deleted={m.action?.ok && m.action.kind !== "warn"}>
         <span class="gauge" title={g.title} aria-hidden="true">
           <span class="fill" style:height="{g.h}%" style:background={g.color}></span>
         </span>
@@ -70,6 +70,7 @@
   }
   article.flag { background: color-mix(in oklab, var(--panel-2) 70%, transparent); }
   article.skipped { opacity: 0.45; }
+  article.deleted .body { text-decoration: line-through; color: var(--text-3); }
   .gauge {
     position: relative; height: 18px; margin-top: 1px;
     background: color-mix(in oklab, var(--line) 60%, transparent);

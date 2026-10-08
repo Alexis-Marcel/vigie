@@ -1,3 +1,6 @@
 import { json } from "@sveltejs/kit";
 import { watcher } from "#lib/server/watcher.ts";
-export const GET = () => json(watcher.state());
+import { currentAccount } from "#lib/server/session.ts";
+import type { RequestHandler } from "./$types.js";
+
+export const GET: RequestHandler = ({ cookies }) => json(watcher.state(currentAccount(cookies)));

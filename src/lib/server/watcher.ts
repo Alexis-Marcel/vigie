@@ -7,6 +7,9 @@ import { Pipeline, type PipelineStats } from "#lib/core/pipeline.ts";
 import type { RuleSet } from "#lib/core/types.ts";
 import type { UiEvent, UiMessage, UiState } from "#lib/ui/types.ts";
 import { toUiMessage } from "#lib/ui/types.ts";
+import type { Account } from "#lib/core/store.ts";
+import type { ChatMessage } from "#lib/core/types.ts";
+import { deleteMessage, timeoutUser, warnUser, type ActionKind } from "./twitch-actions.ts";
 
 // Vite ne charge pas .env dans process.env : on le fait ici, une fois, pour la clé Jev.
 try {
@@ -47,6 +50,12 @@ class Watcher extends EventEmitter {
   /** Chaîne d'un démarrage en cours (avant que la lecture soit connectée). */
   pendingChannel: string | null = null;
 
+  /** Compte Twitch qui agit : celui qui a activé le mode auto ou cliqué dans la file. */
+  actor: Account | null = null;
+  autoDelete = false;
+  /** Messages bruts de la session, pour retrouver l'auteur au moment d'agir. */
+  private raw = new Map<string, ChatMessage>();
+
   channel: string | null = null;
   startedAt: number | null = null;
   stream: StreamInfo | null = null;
@@ -58,8 +67,14 @@ class Watcher extends EventEmitter {
     return this.stop !== null;
   }
 
-  state(): UiState {
+  get db() {
+    return this.store;
+  }
+
+  state(account: Account | null = this.actor): UiState {
     return {
+      account: account ? { userId: account.userId, login: account.login, displayName: account.displayName, avatar: account.avatar } : null,
+      autoDelete: this.autoDelete,
       channel: this.channel,
       running: this.running,
       startedAt: this.startedAt,
@@ -107,6 +122,8 @@ class Watcher extends EventEmitter {
       onStatus: (t) => console.error(`[vigie] ${t}`),
       onMessage: (m) => {
         this.store.insertMessage(m, this.session);
+        this.raw.set(m.id, m);
+        if (this.raw.size > 5000) this.raw.delete(this.raw.keys().next().value!);
         const ui = toUiMessage(m);
         this.push(this.recent, ui, RECENT);
         this.emitEvent({ type: "message", message: ui });
@@ -121,6 +138,9 @@ class Watcher extends EventEmitter {
           if (ev.decision && ev.decision.kind !== "pass") {
             this.ruleHits[ev.decision.ruleId] = (this.ruleHits[ev.decision.ruleId] ?? 0) + 1;
             this.pushQueue(ui);
+            if (ev.decision.kind === "delete" && this.autoDelete && this.actor) {
+              void this.act(ui.id, "delete", this.actor, true);
+            }
           }
           this.emitEvent({ type: "message", message: ui });
           this.emitEvent({ type: "stats", stats: this.pipeline!.stats, ruleHits: this.ruleHits });
@@ -172,6 +192,44 @@ class Watcher extends EventEmitter {
     this.pipeline?.setRules(next);
     this.emitEvent({ type: "rules", ruleSet: next, context: this.pipeline?.currentContext() ?? "" });
     return next;
+  }
+
+  setActor(account: Account | null) {
+    this.actor = account;
+    if (!account && this.autoDelete) this.setAutoDelete(false);
+  }
+
+  setAutoDelete(on: boolean) {
+    if (on && !this.actor) throw new Error("Connectez un compte Twitch modérateur avant d'activer la suppression automatique.");
+    this.autoDelete = on;
+    this.emitEvent({ type: "mode", autoDelete: on });
+  }
+
+  /**
+   * Agit sur Twitch : suppression du message, timeout de 10 minutes ou avertissement.
+   * Le résultat, bon ou mauvais, est enregistré et renvoyé aux pages. Une action réussie
+   * sur un message signalé vaut annotation « confirmé ».
+   */
+  async act(id: string, kind: ActionKind, account: Account, automatic = false): Promise<UiMessage> {
+    const ui = this.queue.find((m) => m.id === id) ?? this.recent.find((m) => m.id === id);
+    const m = this.raw.get(id);
+    if (!ui || !m || !this.channel) throw new Error("Message introuvable dans la session en cours");
+    const d = ui.decision;
+    const rule = d && d.kind !== "pass" ? this.rules.rules.find((r) => r.id === d.ruleId) : null;
+    const reason = `Vigie : ${rule?.label ?? "modération"}`;
+    try {
+      if (kind === "delete") await deleteMessage(this.store, account, this.channel, id);
+      else if (kind === "timeout") await timeoutUser(this.store, account, this.channel, m.userId, 600, reason);
+      else await warnUser(this.store, account, this.channel, m.userId, reason);
+      ui.action = { kind, ok: true, automatic };
+      this.store.insertAction({ messageId: id, kind, byUserId: account.userId, automatic, ok: true });
+      if (ui.decision && ui.decision.kind !== "pass" && !ui.annotation) this.annotate(id, "confirmed");
+    } catch (e) {
+      ui.action = { kind, ok: false, automatic, error: (e as Error).message };
+      this.store.insertAction({ messageId: id, kind, byUserId: account.userId, automatic, ok: false, error: (e as Error).message });
+    }
+    this.emitEvent({ type: "message", message: ui });
+    return ui;
   }
 
   /** Valider = la règle s'appliquait ; ignorer = aucune règle ne s'appliquait. Les deux sont des annotations. */

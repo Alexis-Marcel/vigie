@@ -14,9 +14,22 @@ export interface UiMessage {
   decision?: Decision;
   annotation?: "confirmed" | "dismissed";
   error?: string;
+  /** Action réellement effectuée sur Twitch (ou tentée). */
+  action?: { kind: "delete" | "timeout" | "warn"; ok: boolean; automatic: boolean; error?: string };
+}
+
+export interface UiAccount {
+  userId: string;
+  login: string;
+  displayName: string;
+  avatar: string;
 }
 
 export interface UiState {
+  /** Compte Twitch connecté dans ce navigateur, s'il y en a un. */
+  account: UiAccount | null;
+  /** Suppression automatique des messages au-dessus du seuil d'une règle « supprimer ». */
+  autoDelete: boolean;
   channel: string | null;
   running: boolean;
   startedAt: number | null;
@@ -36,6 +49,7 @@ export type UiEvent =
   | { type: "stats"; stats: PipelineStats; ruleHits: Record<string, number> }
   | { type: "stream"; stream: StreamInfo | null; context: string }
   | { type: "rules"; ruleSet: RuleSet; context: string }
+  | { type: "mode"; autoDelete: boolean }
   | { type: "annotation"; id: string; annotation: "confirmed" | "dismissed" };
 
 export function toUiMessage(m: ChatMessage): UiMessage {

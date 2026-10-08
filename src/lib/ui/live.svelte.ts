@@ -2,6 +2,8 @@ import type { UiEvent, UiMessage, UiState } from "./types.ts";
 import type { RuleSet } from "#lib/core/types.ts";
 
 const empty: UiState = {
+  account: null,
+  autoDelete: false,
   channel: null,
   running: false,
   startedAt: null,
@@ -53,6 +55,9 @@ export class Live {
         this.state.stream = ev.stream;
         this.state.context = ev.context;
         break;
+      case "mode":
+        this.state.autoDelete = ev.autoDelete;
+        break;
       case "rules":
         this.state.ruleSet = ev.ruleSet;
         this.state.rules = ev.ruleSet.rules;
@@ -92,6 +97,26 @@ export class Live {
       rules: ruleSet.rules,
     };
     const res = await fetch("/api/rules", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (res.ok) return null;
+    return (await res.json().catch(() => ({ message: res.statusText }))).message as string;
+  }
+
+  async logout() {
+    await fetch("/auth/logout", { method: "POST" });
+    this.state.account = null;
+    this.state.autoDelete = false;
+  }
+
+  /** Active ou coupe la suppression automatique. Renvoie null, ou le message d'erreur. */
+  async setAutoDelete(on: boolean): Promise<string | null> {
+    const res = await fetch("/api/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autoDelete: on }) });
+    if (res.ok) return null;
+    return (await res.json().catch(() => ({ message: res.statusText }))).message as string;
+  }
+
+  /** Agit sur Twitch depuis la file. Le message mis à jour revient par le flux. */
+  async act(id: string, kind: "delete" | "timeout" | "warn"): Promise<string | null> {
+    const res = await fetch("/api/act", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, kind }) });
     if (res.ok) return null;
     return (await res.json().catch(() => ({ message: res.statusText }))).message as string;
   }

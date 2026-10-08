@@ -41,10 +41,18 @@
 
   function whyLabel(m: UiMessage) {
     const d = m.decision!;
-    if (d.kind === "delete") return "supprimerait";
+    if (d.kind === "delete") return live.state.autoDelete ? "suppression auto" : "supprimerait";
     if (d.kind === "review") return d.reason === "zone grise" ? "zone grise" : d.reason === "s'adresse au bot" ? "s'adresse au bot" : "à vérifier";
     return "";
   }
+
+  const canAct = $derived(!!live.state.account);
+  let actErrors = $state<Record<string, string>>({});
+  async function act(m: UiMessage, kind: "delete" | "timeout" | "warn") {
+    const err = await live.act(m.id, kind);
+    if (err) actErrors[m.id] = err;
+  }
+  const actionLabel = { delete: "Supprimé", timeout: "Timeout 10 min", warn: "Averti" } as const;
 </script>
 
 <section>
@@ -104,13 +112,27 @@
           </ul>
         {/if}
         <footer>
-          {#if m.annotation === "confirmed"}
+          {#if m.action?.ok}
+            <span class="verdict acted">{actionLabel[m.action.kind]}{m.action.automatic ? " automatiquement" : ""}</span>
+            {#if m.action.kind !== "timeout" && canAct}
+              <button class="danger" onclick={() => act(m, "timeout")}>Timeout 10 min</button>
+            {/if}
+          {:else if m.annotation === "confirmed"}
             <span class="verdict ok">Confirmé</span>
           {:else if m.annotation === "dismissed"}
             <span class="verdict">Ignoré</span>
           {:else}
+            {#if canAct}
+              <button class="danger" onclick={() => act(m, "delete")}>Supprimer</button>
+              <button class="danger" onclick={() => act(m, "timeout")}>Timeout 10 min</button>
+            {/if}
             <button class="confirm" onclick={() => live.annotate(m.id, "confirmed")}>Confirmer</button>
             <button onclick={() => live.annotate(m.id, "dismissed")}>Ignorer</button>
+          {/if}
+          {#if m.action && !m.action.ok}
+            <span class="acterr">{m.action.error}</span>
+          {:else if actErrors[m.id]}
+            <span class="acterr">{actErrors[m.id]}</span>
           {/if}
         </footer>
       </article>
@@ -177,4 +199,9 @@
   .confirm { border-color: var(--accent); color: var(--accent); background: color-mix(in oklab, var(--accent) 10%, transparent); }
   .verdict { font-size: 13px; color: var(--text-3); }
   .verdict.ok { color: var(--accent); }
+  .verdict.acted { color: var(--delete); font-weight: 600; }
+  footer { flex-wrap: wrap; }
+  footer .danger { border-color: color-mix(in oklab, var(--delete) 50%, var(--line)); color: var(--delete); }
+  footer .danger:hover { background: color-mix(in oklab, var(--delete) 12%, transparent); }
+  .acterr { flex-basis: 100%; font-size: 12px; color: var(--delete); }
 </style>
