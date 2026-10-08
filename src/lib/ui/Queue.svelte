@@ -93,7 +93,7 @@
 
   <div class="scroll">
     {#if all.length === 0}
-      <p class="empty">Les messages que Vigie signalerait apparaîtront ici, avec la règle et sa certitude. Vous confirmez ou vous ignorez, et chaque réponse sert à mesurer Jev.</p>
+      <p class="empty">Les messages que Vigie signale apparaîtront ici, avec la règle et sa certitude. Vous agissez si besoin, et vous dites si le signalement était juste ou à tort : chaque réponse sert à régler Jev.</p>
     {:else if shown.length === 0}
       <p class="empty">Rien en attente{ruleFilter ? ` pour « ${rules[ruleFilter]?.label} »` : ""}.</p>
     {/if}
@@ -123,18 +123,23 @@
             {#if m.action.kind !== "timeout" && canAct}
               <button class="danger" onclick={() => act(m, "timeout")}>Timeout 10 min</button>
             {/if}
-          {:else if m.annotation === "confirmed"}
-            <span class="verdict ok">Confirmé</span>
-          {:else if m.annotation === "dismissed"}
-            <span class="verdict">Ignoré</span>
-          {:else}
-            {#if canAct}
-              <button class="danger" onclick={() => act(m, "delete")}>Supprimer</button>
-              <button class="danger" onclick={() => act(m, "timeout")}>Timeout 10 min</button>
-            {/if}
-            <button class="confirm" onclick={() => live.annotate(m.id, "confirmed")}>Confirmer</button>
-            <button onclick={() => live.annotate(m.id, "dismissed")}>Ignorer</button>
+          {:else if canAct && !m.annotation}
+            <button class="danger" onclick={() => act(m, "delete")}>Supprimer</button>
+            <button class="danger" onclick={() => act(m, "timeout")}>Timeout 10 min</button>
           {/if}
+
+          <span class="opinion" title="Votre avis sur le signalement de Vigie. Il ne touche pas à Twitch, il sert à mesurer et régler Jev.">
+            <span class="q">Signalement</span>
+            {#if m.annotation === "confirmed"}
+              <span class="verdict ok">juste</span>
+            {:else if m.annotation === "dismissed"}
+              <span class="verdict">à tort</span>
+            {:else}
+              <button class="yes" onclick={() => live.annotate(m.id, "confirmed")}>Juste</button>
+              <button onclick={() => live.annotate(m.id, "dismissed")}>À tort</button>
+            {/if}
+          </span>
+
           {#if m.action && !m.action.ok}
             <span class="acterr">{m.action.error}</span>
           {:else if actErrors[m.id]}
@@ -207,6 +212,11 @@
   .verdict.ok { color: var(--accent); }
   .verdict.acted { color: var(--delete); font-weight: 600; }
   footer { flex-wrap: wrap; }
+  .opinion { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+  .q { font-size: 12px; color: var(--text-3); margin-right: 2px; }
+  .opinion button { padding: 4px 10px; font-size: 12px; color: var(--text-2); background: none; }
+  .opinion .yes { border-color: color-mix(in oklab, var(--accent) 50%, var(--line)); color: var(--accent); }
+  .opinion .yes:hover { background: color-mix(in oklab, var(--accent) 10%, transparent); }
   footer .danger { border-color: color-mix(in oklab, var(--delete) 50%, var(--line)); color: var(--delete); }
   footer .danger:hover { background: color-mix(in oklab, var(--delete) 12%, transparent); }
   .acterr { flex-basis: 100%; font-size: 12px; color: var(--delete); }
