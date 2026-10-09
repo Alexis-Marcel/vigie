@@ -1,9 +1,12 @@
 {
   "name": "vigie",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
-  "description": "Modérateur de chat Twitch : règles en français, jugées en temps réel par un modèle de décision. Observe d'abord, agit ensuite.",
+  "description": "Modérateur de chat Twitch : règles en français, jugées en temps réel par un modèle de décision. Observe, assiste ou modère.",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.13 <25"
+  },
   "type": "module",
   "imports": {
     "#lib/*": "./src/lib/*"
@@ -13,7 +16,8 @@
     "dev": "vite dev --port 5173",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "build": "vite build"
+    "build": "vite build",
+    "start": "node build"
   },
   "dependencies": {
     "yaml": "^2",
@@ -29,5 +33,11 @@
     "tsx": "^4",
     "typescript": "^5",
     "vite": "^8.3.3"
+  },
+  "packageManager": "pnpm@10.29.3",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

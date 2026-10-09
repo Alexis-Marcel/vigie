@@ -1,0 +1,18 @@
+# Vigie en une commande : copiez .env.example en .env, remplissez les clés, puis `docker compose up -d`.
+# Mettez un reverse proxy HTTPS devant (Caddy, Traefik, nginx) : Twitch exige HTTPS pour l'URL de redirection OAuth.
+services:
+  vigie:
+    image: ghcr.io/alexis-marcel/vigie:latest
+    container_name: vigie
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      # Origine publique du site, telle que les navigateurs la voient. Sert aux redirections OAuth.
+      ORIGIN: ${ORIGIN:-http://localhost:3000}
+    volumes:
+      - vigie-data:/app/data
+
+volumes:
+  vigie-data:

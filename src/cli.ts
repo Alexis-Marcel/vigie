@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { existsSync } from "node:fs";
 import { readTwitchChat } from "./lib/core/sources/twitch.js";
 import { fetchStreamInfo } from "./lib/core/sources/twitch-info.js";
 import { buildContext } from "./lib/core/context.js";
@@ -44,7 +45,7 @@ switch (cmd) {
   case "watch":
     watch({
       channel: channelArg(),
-      rulesPath: opt("rules") ?? "rules.yaml",
+      rulesPath: opt("rules") ?? defaultRulesPath(),
       minutes: opt("minutes") ? Number(opt("minutes")) : undefined,
       context: opt("context") ? Number(opt("context")) : undefined,
     });
@@ -53,10 +54,10 @@ switch (cmd) {
     runReplay(channelArg());
     break;
   case "annotate":
-    annotate({ channel: channelArg(), rulesPath: opt("rules") ?? "rules.yaml", sample: Number(opt("sample") ?? 300) });
+    annotate({ channel: channelArg(), rulesPath: opt("rules") ?? defaultRulesPath(), sample: Number(opt("sample") ?? 300) });
     break;
   case "stats":
-    stats({ channel: channelArg(), rulesPath: opt("rules") ?? "rules.yaml" });
+    stats({ channel: channelArg(), rulesPath: opt("rules") ?? defaultRulesPath() });
     break;
   case "info": {
     const c = channelArg();
@@ -111,8 +112,13 @@ async function observe(channel: string, minutes?: number) {
 async function runReplay(channel: string) {
   await replay({
     channel,
-    rulesPath: opt("rules") ?? "rules.yaml",
+    rulesPath: opt("rules") ?? defaultRulesPath(),
     limit: opt("limit") ? Number(opt("limit")) : undefined,
     context: opt("context") ? Number(opt("context")) : undefined,
   });
+}
+
+/** `rules.yaml` s'il existe à côté (réglages locaux), sinon le jeu par défaut livré avec Vigie. */
+function defaultRulesPath(): string {
+  return existsSync("rules.yaml") ? "rules.yaml" : "rules.example.yaml";
 }
