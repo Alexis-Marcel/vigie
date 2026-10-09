@@ -10,7 +10,7 @@
   let editing = $state(false);
 
   onMount(() => {
-    live.connect();
+    void live.boot().then(() => live.loadDefaultRules());
     return () => live.disconnect();
   });
 </script>

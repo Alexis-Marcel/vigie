@@ -1,6 +1,6 @@
 import { json, error } from "@sveltejs/kit";
 import { currentAccount } from "#lib/server/session.ts";
-import { watcher } from "#lib/server/watcher.ts";
+import { store } from "#lib/server/hub.ts";
 import { moderatedChannels } from "#lib/server/twitch-actions.ts";
 import type { RequestHandler } from "./$types.js";
 
@@ -9,7 +9,7 @@ export const GET: RequestHandler = async ({ cookies }) => {
   const account = currentAccount(cookies);
   if (!account) return json([]);
   try {
-    return json(await moderatedChannels(watcher.db, account));
+    return json(await moderatedChannels(store, account));
   } catch (e) {
     error(502, (e as Error).message);
   }

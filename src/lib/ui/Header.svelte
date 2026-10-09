@@ -100,6 +100,7 @@
   const sentence = $derived.by(() => {
     const who = s.account?.displayName ?? "";
     if (!s.running) {
+      if (s.stoppedReason) return `Observation de ${s.channel} arrêtée : ${s.stoppedReason}`;
       if (selected === "observe") return "Observer lit le chat de n'importe quelle chaîne, sans y toucher, et montre ce que Vigie ferait.";
       if (selected === "assist") return `Assister : Vigie signale, vous agissez au nom de ${who} depuis la file. Rien n'est supprimé sans votre clic.`;
       return `Modérer : Vigie supprime seule au-dessus des seuils au nom de ${who}. Vous traitez la zone grise.`;

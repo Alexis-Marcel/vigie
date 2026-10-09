@@ -1,19 +1,19 @@
 import { json } from "@sveltejs/kit";
-import { watcher } from "#lib/server/watcher.ts";
+import { hub, store } from "#lib/server/hub.ts";
 import { COOKIE, currentAccount } from "#lib/server/session.ts";
 import { revoke } from "#lib/server/twitch-auth.ts";
 import type { RequestHandler } from "./$types.js";
 
-/** Déconnexion : session supprimée, jeton révoqué chez Twitch, compte oublié. */
+/** Déconnexion : session supprimée, jeton révoqué chez Twitch, compte oublié, observations repassées en Observer. */
 export const POST: RequestHandler = async ({ cookies }) => {
   const account = currentAccount(cookies);
   const id = cookies.get(COOKIE);
-  if (id) watcher.db.deleteSession(id);
+  if (id) store.deleteSession(id);
   cookies.delete(COOKIE, { path: "/" });
   if (account) {
+    hub.dropActor(account.userId);
     await revoke(account);
-    watcher.db.deleteAccount(account.userId);
-    if (watcher.actor?.userId === account.userId) watcher.setActor(null);
+    store.deleteAccount(account.userId);
   }
   return json({ ok: true });
 };

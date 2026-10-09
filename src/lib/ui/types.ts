@@ -41,12 +41,20 @@ export interface UiChannel {
 }
 
 export interface UiState {
+  /** Identifiant de l'observation affichée, null tant qu'aucune n'est lancée. */
+  key: string | null;
   /** Compte Twitch connecté dans ce navigateur, s'il y en a un. */
   account: UiAccount | null;
+  /** Vrai si ce navigateur peut agir sur cette observation (compte modérateur de la chaîne). */
+  canAct: boolean;
   mode: Mode;
   channel: string | null;
   running: boolean;
   startedAt: number | null;
+  /** Instant où l'observation s'arrêtera d'elle-même (limite de durée). */
+  deadline: number | null;
+  /** Pourquoi la dernière observation s'est arrêtée, si ce n'est pas l'utilisateur. */
+  stoppedReason: string | null;
   stream: StreamInfo | null;
   context: string;
   stats: PipelineStats;
@@ -64,6 +72,7 @@ export type UiEvent =
   | { type: "stream"; stream: StreamInfo | null; context: string }
   | { type: "rules"; ruleSet: RuleSet; context: string }
   | { type: "mode"; mode: Mode }
+  | { type: "stopped"; reason: string | null }
   | { type: "annotation"; id: string; annotation: "confirmed" | "dismissed" };
 
 export function toUiMessage(m: ChatMessage): UiMessage {

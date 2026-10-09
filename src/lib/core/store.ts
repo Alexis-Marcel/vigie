@@ -73,6 +73,12 @@ export class Store {
         error TEXT,
         acted_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS channel_rules (
+        key TEXT PRIMARY KEY,
+        channel TEXT NOT NULL,
+        yaml TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS annotations (
         message_id TEXT NOT NULL,
         rule_id TEXT NOT NULL,
@@ -168,7 +174,34 @@ export class Store {
     ).map((r) => ({ messageId: r.message_id, text: r.text, ruleId: r.rule_id, label: r.label === 1, confidence: r.confidence }));
   }
 
-  // --- comptes Twitch connectés (un seul utilisé à la fois dans le prototype)
+  // --- règles par chaîne (clé = chaîne pour les modérateurs, chaîne@navigateur pour un anonyme)
+
+  channelRulesYaml(key: string): string | null {
+    const r = this.db.prepare(`SELECT yaml FROM channel_rules WHERE key = ?`).get(key) as { yaml: string } | undefined;
+    return r?.yaml ?? null;
+  }
+
+  saveChannelRulesYaml(key: string, channel: string, yaml: string): void {
+    this.db
+      .prepare(`INSERT OR REPLACE INTO channel_rules (key, channel, yaml, updated_at) VALUES (?, ?, ?, ?)`)
+      .run(key, channel, yaml, Date.now());
+  }
+
+  // --- limites et entretien
+
+  /** Dépense Jev enregistrée depuis un instant donné, toutes chaînes confondues. */
+  costSince(since: number): number {
+    const r = this.db.prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS c FROM judgements WHERE judged_at >= ?`).get(since) as { c: number };
+    return r.c;
+  }
+
+  /** Efface les messages bruts plus vieux qu'un instant. Verdicts et annotations restent. */
+  purgeMessagesBefore(ts: number): number {
+    const r = this.db.prepare(`DELETE FROM messages WHERE sent_at < ?`).run(ts);
+    return Number(r.changes);
+  }
+
+  // --- comptes Twitch connectés
 
   saveAccount(a: Account): void {
     this.db

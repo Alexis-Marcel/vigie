@@ -39,12 +39,21 @@ Le juge est une interface (`src/judges/judge.ts`). Trois implémentations prévu
 pnpm dev          # http://localhost:5173
 ```
 
-Une page, trois colonnes : le chat qui défile avec, à gauche de chaque message, une jauge
-colorée par la probabilité la plus forte ; la file des messages à vérifier, avec « Confirmer »
-et « Ignorer » qui enregistrent une annotation ; le bilan, le contexte envoyé à Jev et les
-règles. « Modifier » ouvre l'éditeur de règles : nom, question, action, seuil, ordre, contexte
-de la chaîne. L'enregistrement écrit `rules.yaml` et s'applique à l'observation en cours.
-On entre une chaîne, on observe. Rien n'est supprimé.
+Trois modes, un seul réglage :
+
+- **Observer** : n'importe quelle chaîne, sans compte. Vigie lit, juge et montre ce qu'elle ferait.
+- **Assister** : sur ses propres chaînes, avec un compte Twitch modérateur. Vigie signale,
+  l'humain supprime ou met en timeout depuis la file.
+- **Modérer** : Vigie supprime seule au-dessus des seuils, l'humain traite la zone grise.
+
+Une page, trois colonnes : le chat qui défile avec, à gauche de chaque message, une jauge colorée
+par la probabilité la plus forte ; la file des signalements, filtrable par règle, avec les actions
+et l'avis « juste / à tort » qui sert à mesurer Jev ; le bilan, le contexte envoyé à Jev et les
+règles, éditables par chaîne et appliquées à chaud.
+
+Le service peut être ouvert à tous : chaque navigateur a ses observations, les modérateurs d'une
+même chaîne partagent la leur, et des limites bornent la dépense (durée, simultanéité, budget
+Jev par jour, voir `.env.example`). Les messages bruts sont effacés après sept jours.
 
 ## Commandes en ligne
 
@@ -71,8 +80,9 @@ minutes et horodaté : le rejeu utilise celui qui était en vigueur à l'instant
 - [x] Mode observateur en direct
 - [x] Interface : chat en direct, file de vérification, bilan, contexte, règles
 - [ ] Seuils et formulations réglés d'après les annotations
-- [ ] Mode action : suppression via Helix, compte modérateur en OAuth
 - [x] Édition des règles, des seuils et du contexte depuis l'interface, appliquée à chaud
+- [x] Mode action : connexion Twitch, suppression, timeout, suppression automatique
+- [x] Plusieurs observations en parallèle, règles par chaîne, limites pour un service ouvert
 
 ## Stack
 

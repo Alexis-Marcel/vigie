@@ -6,18 +6,25 @@
   const st = $derived(s.stats);
   const latency = $derived(st.p50);
   const per10k = $derived(st.judged ? (st.cost / st.judged) * 10_000 : 0);
-  const elapsed = $derived.by(() => {
-    if (!s.startedAt) return null;
-    const min = Math.round((Date.now() - s.startedAt) / 60_000);
+  const fmt = (ms: number) => {
+    const min = Math.max(0, Math.round(ms / 60_000));
     return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}`;
+  };
+  // Une horloge pour que « depuis » et « encore » avancent sans nouveau message.
+  let now = $state(Date.now());
+  $effect(() => {
+    const t = setInterval(() => (now = Date.now()), 30_000);
+    return () => clearInterval(t);
   });
+  const elapsed = $derived(s.startedAt ? fmt(now - s.startedAt) : null);
+  const remaining = $derived(s.running && s.deadline ? fmt(s.deadline - now) : null);
   const actionLabel = { delete: "supprimer", flag: "vérifier", log: "noter" } as const;
   let { onEditRules }: { onEditRules: () => void } = $props();
 </script>
 
 <aside>
   <section>
-    <h2>Bilan {#if elapsed}<span class="count">{elapsed}</span>{/if}</h2>
+    <h2>Bilan {#if elapsed}<span class="count">{elapsed}{#if remaining}, encore {remaining} au plus{/if}</span>{/if}</h2>
     <dl>
       <div><dt>Messages lus</dt><dd>{int(st.total)}</dd></div>
       <div><dt>Écartés avant Jev</dt><dd>{int(st.prefiltered)}</dd></div>

@@ -51,7 +51,7 @@
     return "";
   }
 
-  const canAct = $derived(!!live.state.account && live.state.mode !== "observe");
+  const canAct = $derived(live.state.canAct && live.state.mode !== "observe");
   const title = $derived(live.state.mode === "observe" ? "À vérifier" : "À traiter");
   let actErrors = $state<Record<string, string>>({});
   async function act(m: UiMessage, kind: "delete" | "timeout" | "warn") {
